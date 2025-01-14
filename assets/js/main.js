@@ -117,6 +117,7 @@
       backDelay: 2000
     });
   }
+  
 
   /**
    * Animate the skills items on reveal

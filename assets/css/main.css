@@ -17,6 +17,11 @@
   --nav-font: "Poppins",  sans-serif;
 }
 
+/* .typing-color{
+  color: #ea0000;
+  font-weight: 700;
+  font-size: 16px;
+} */
 /* Global Colors - The following color variables are used throughout the website. Updating them here will change the color scheme of the entire website */
 :root { 
   --background-color: #ffffff; /* Background color for the entire website, including individual sections */
