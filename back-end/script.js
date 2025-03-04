@@ -7,12 +7,12 @@ document.addEventListener("DOMContentLoaded", function () {
         const subject = document.getElementById("subject").value;
         const message = document.getElementById("message").value;
         const sendButton = document.getElementById("sendButton"); // Button element
-
-        const apiUrl = "http://localhost:3001/api/v1/message/send";
+                                            
+        const apiUrl = "https://back-endportfolio-production.up.railway.app/api/v1/message/send";
 
         const requestBody = { username, subject, message };
 
-        try {
+        try { 
             // Disable the button to prevent multiple clicks
             sendButton.disabled = true;
             sendButton.innerText = "Sending...";
