@@ -23,8 +23,6 @@ document.addEventListener("DOMContentLoaded", function () {
                 body: JSON.stringify(requestBody)
             });
 
-            console.log("Body Req:", requestBody);
-
             if (response.status === 201) { // ✅ Corrected status check
                 document.getElementById("responseMessage").innerHTML =
                     `<div class="alert alert-success">Message sent successfully!</div>`;
