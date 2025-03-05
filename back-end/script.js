@@ -7,8 +7,8 @@ document.addEventListener("DOMContentLoaded", function () {
         const subject = document.getElementById("subject").value;
         const message = document.getElementById("message").value;
         const sendButton = document.getElementById("sendButton"); // Button element
-                                            
-        const apiUrl = "https://back-endportfolio-production.up.railway.app/api/v1/message/send";
+        let api= process.env.API                                    
+        const apiUrl = `${api}/api/v1/message/send`;
 
         const requestBody = { username, subject, message };
 
