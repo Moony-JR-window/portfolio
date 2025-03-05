@@ -6,9 +6,8 @@ document.addEventListener("DOMContentLoaded", function () {
         const username = document.getElementById("username").value;
         const subject = document.getElementById("subject").value;
         const message = document.getElementById("message").value;
-        const sendButton = document.getElementById("sendButton"); // Button element
-        let api= process.env.api;                                    
-        const apiUrl = `${api}/api/v1/message/send`;
+        const sendButton = document.getElementById("sendButton"); // Button element                                    
+        const apiUrl = "https://back-endportfolio-production.up.railway.app/api/v1/message/send";
 
         const requestBody = { username, subject, message };
 
@@ -22,6 +21,8 @@ document.addEventListener("DOMContentLoaded", function () {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(requestBody)
             });
+
+            console.log("Body Req:", requestBody);
 
             if (response.status === 201) { // ✅ Corrected status check
                 document.getElementById("responseMessage").innerHTML =
