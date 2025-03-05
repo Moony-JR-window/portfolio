@@ -6,9 +6,11 @@ document.addEventListener("DOMContentLoaded", function () {
         const username = document.getElementById("username").value;
         const subject = document.getElementById("subject").value;
         const message = document.getElementById("message").value;
-        const sendButton = document.getElementById("sendButton"); // Button element                                    
+        const sendButton = document.getElementById("sendButton"); // Button element               
+        
+        
         const apiUrl = "https://back-endportfolio-production.up.railway.app/api/v1/message/send";
-
+        
         const requestBody = { username, subject, message };
 
         try { 
