@@ -549,6 +549,30 @@ h6 {
   transition: all 0.4s;
 }
 
+.ActiveUser {
+  position: fixed;
+  left: 15px;
+  bottom: 15px;
+  z-index: 9999;
+  background-color: rgb(255, 0, 238);
+  padding: 10px;
+  height: 30px;
+  border-radius: 50px;
+  transition: all 0.4s;
+  color: #ffffff;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: grab;
+  touch-action: none;
+  
+}
+
+.hidden {
+  opacity: 0;
+  visibility: visible;
+}
+
 .scroll-top i {
   font-size: 24px;
   color: var(--contrast-color);
@@ -566,6 +590,27 @@ h6 {
   bottom: 15px;
 }
 
+  /* Message Box Style */
+  .message-box {
+    position: fixed;
+    left: 15px;
+    bottom: 60px;
+    background: #656565;
+    color: white;
+    padding: 10px 15px;
+    border-radius: 8px;
+    font-size: 14px;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+  }
+
+  .message-box.show {
+    opacity: 1;
+    visibility: visible;
+  }
+
+  
 /*--------------------------------------------------------------
 # Disable aos animation delay on mobile devices
 --------------------------------------------------------------*/
