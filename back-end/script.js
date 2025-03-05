@@ -1,4 +1,21 @@
+
+
 document.addEventListener("DOMContentLoaded", function () {
+    // Variable to store the user count for testing
+    let userCount = parseInt(localStorage.getItem('userCount') || '0');
+
+    // Display the user count on the page
+    document.getElementById("userCountDisplay").innerText = `Unique Device Visits: ${userCount}`;
+
+    // Check if the device has visited before
+    if (localStorage.getItem('deviceVisited') === null) {
+        // If not, mark this device as visited and increment the user count
+        localStorage.setItem('deviceVisited', 'true');
+        userCount++;
+        localStorage.setItem('userCount', userCount.toString());
+    }
+
+    // Handle form submission
     document.getElementById("contactForm").addEventListener("submit", async function (event) {
         event.preventDefault(); // Prevent default form submission
 
@@ -8,9 +25,7 @@ document.addEventListener("DOMContentLoaded", function () {
         const message = document.getElementById("message").value;
         const sendButton = document.getElementById("sendButton"); // Button element               
         
-        
         const apiUrl = "https://back-endportfolio-production.up.railway.app/api/v1/message/send";
-        
         const requestBody = { username, subject, message };
 
         try { 
@@ -43,4 +58,8 @@ document.addEventListener("DOMContentLoaded", function () {
             sendButton.innerText = "Send Message";
         }
     });
+
+    // You can test the count variable in the console for now:
+    console.log('Current user count:', userCount);
 });
+
