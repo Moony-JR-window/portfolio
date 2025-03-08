@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Get Device Name</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      margin-top: 50px;
+    }
+    #device-info {
+      font-size: 1.2em;
+      color: #333;
+    }
+  </style>
+</head>
+<body>
+  <h1>Device Information</h1>
+  <div id="device-info">Loading device information...</div>
+
+  <script>
+    // Function to extract device name from User-Agent string
+    function getDeviceName() {
+      const userAgent = navigator.userAgent;
+
+      // Check for common device patterns
+      if (/iPhone|iPad|iPod/.test(userAgent)) {
+        return userAgent.match(/(iPhone|iPad|iPod)[\s\S]*OS\s[\d_]+/)[0];
+      } else if (/Android/.test(userAgent)) {
+        return userAgent.match(/Android[\s\S]*;[ \w]+)/)[0];
+      } else if (/Windows/.test(userAgent)) {
+        return "Windows Device";
+      } else if (/Macintosh/.test(userAgent)) {
+        return "Mac Device";
+      } else {
+        return "Unknown Device";
+      }
+    }
+
+    // Display the device name
+    document.getElementById("device-info").innerText = "Your Device: " + getDeviceName();
+  </script>
+</body>
+</html>
