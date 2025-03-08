@@ -21,15 +21,21 @@
   <div id="device-info">Loading device information...</div>
 
   <script>
-    // Function to extract device name from User-Agent string
+    // Function to extract device name and brand from User-Agent string
     function getDeviceName() {
       const userAgent = navigator.userAgent;
 
       // Check for common device patterns
       if (/iPhone|iPad|iPod/.test(userAgent)) {
-        return userAgent.match(/(iPhone|iPad|iPod)/)[0];
+        return "Apple " + userAgent.match(/(iPhone|iPad|iPod)/)[0];
       } else if (/Android/.test(userAgent)) {
-        return userAgent.match(/Android.*; ([^)]+)\)/)[1];
+        // Extract Android device brand and model
+        const androidInfo = userAgent.match(/Android.*; ([\w\s]+)( Build|\/)/);
+        if (androidInfo && androidInfo[1]) {
+          return androidInfo[1].trim(); // Returns brand and model (e.g., "Vivo 1920", "Xiaomi Redmi Note 8")
+        } else {
+          return "Unknown Android Device";
+        }
       } else if (/Windows/.test(userAgent)) {
         return "Windows Device";
       } else if (/Macintosh/.test(userAgent)) {
