@@ -27,9 +27,9 @@
 
       // Check for common device patterns
       if (/iPhone|iPad|iPod/.test(userAgent)) {
-        return userAgent.match(/(iPhone|iPad|iPod)[\s\S]*OS\s[\d_]+/)[0];
+        return userAgent.match(/(iPhone|iPad|iPod)/)[0];
       } else if (/Android/.test(userAgent)) {
-        return userAgent.match(/Android[\s\S]*;[ \w]+)/)[0];
+        return userAgent.match(/Android.*; ([^)]+)\)/)[1];
       } else if (/Windows/.test(userAgent)) {
         return "Windows Device";
       } else if (/Macintosh/.test(userAgent)) {
