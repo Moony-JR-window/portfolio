@@ -720,8 +720,8 @@ section,
   position: relative;
   padding: 60px 0;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  align-items: start;
+  justify-content: start;
 }
 
 .hero img {
