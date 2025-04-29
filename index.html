@@ -96,11 +96,19 @@
                   <span class="blur-container" onclick="toggleBlur(this)">
                     <span class="blur-label">Click</span>
                     <span class="blurred">rorn.monyy009988@gmail.com</span>
+                    <button class="copy-btn" onclick="copyText(event, this)">
+                      <i class="fa fa-copy"></i>
+                    </button>
                   </span>
                 </p>
-                <p><strong>Phone: </strong>
-                  <span id="phone-number" class="blurred" onclick="togglePhone()">086938457</span>
                 </p>
+                <p><strong>Phone: </strong>
+                  <span id="phone-number" class="blur-container" onclick="toggleBlur(this)">
+                    <span class="blurred">086938457</span>
+                    <button class="copy-btn" onclick="copyText(event, this)">
+                      <i class="fa fa-copy"></i>
+                    </button>
+                  </span>
                 
               </div>
             </div>
