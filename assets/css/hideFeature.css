@@ -1,0 +1,38 @@
+
+  .blur-container {
+    position: relative;
+    display: inline-block;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .blur-label {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #555;
+    font-size: 1em;
+    padding: 2px 6px;
+    border-radius: 6px;
+    z-index: 2;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+  }
+
+  .blurred {
+    filter: blur(6px);
+    transition: filter 0.3s ease;
+    font-family: monospace;
+    color: #333;
+  }
+
+  .visible .blurred {
+    filter: none;
+  }
+
+  .visible .blur-label {
+    opacity: 0;
+    visibility: hidden;
+  }
+

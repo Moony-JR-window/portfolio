@@ -26,6 +26,7 @@
 
   <!-- Main CSS File -->
   <link href="assets/css/main.css" rel="stylesheet">
+  <link href="assets/css/hideFeature.css" rel="stylesheet">
 
 
   <!-- =======================================================
@@ -91,8 +92,16 @@
               <div class="col-lg-7 about-info">
                 <p><strong>RealName: </strong> <span>Rorn Mony</span></p>
                 <p><strong>Profile: </strong> <span>full stack developer</span></p>
-                <p><strong>Email: </strong> <span>rorn.monyy009988@gmail.com</span></p>
-                <p><strong>Phone: </strong> <span>086938457</span></p>
+                <p><strong>Email: </strong>
+                  <span class="blur-container" onclick="toggleBlur(this)">
+                    <span class="blur-label">Click</span>
+                    <span class="blurred">rorn.monyy009988@gmail.com</span>
+                  </span>
+                </p>
+                <p><strong>Phone: </strong>
+                  <span id="phone-number" class="blurred" onclick="togglePhone()">086938457</span>
+                </p>
+                
               </div>
             </div>
 
@@ -204,7 +213,10 @@
               <h4>Rorn Mony</h4>
               <p><em> born at KumpongThom province </em></p>
               <ul>
-                <li>birth: 10-04-2003 </li>
+                <span class="blur-container" onclick="hbd(this)"> 
+                  <li>birth: <span class="blurred" >10-04-2003 </span> </li>
+                </span>
+                
                 <li>Krong Stueng Sen</li>
                 <li>OurkonThor Vilage </li>
               </ul>
@@ -354,7 +366,7 @@
 
   <!-- Preloader -->
   <div id="preloader"></div>
-
+  
   <!-- Vendor JS Files -->
   <script src="assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
   <script src="assets/vendor/php-email-form/validate.js"></script>
@@ -369,6 +381,7 @@
   <script src="https://kit.fontawesome.com/8495d95513.js" crossorigin="anonymous"></script>
   <!-- Main JS File -->
   <script src="assets/js/main.js"></script>
+  <script src="assets/js/hidelFeature.js"></script>
   <script src="back-end/script.js"></script>
   <script src="back-end/countUser.js"></script>
 
