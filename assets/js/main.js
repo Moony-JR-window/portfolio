@@ -166,6 +166,49 @@
     });
   });
   
+  let skillsAnimation1 = document.querySelectorAll('.skills-animation');
+
+  skillsAnimation1.forEach((item) => {
+    // Store progress bars for each skill item
+    let progressBars = item.querySelectorAll('.progress .progress-barTools');
+  
+    // Function to reset progress bar width to 0
+    const resetProgressBars = () => {
+      progressBars.forEach(el => {
+        el.style.width = '0%';
+      });
+    };
+  
+    // Initialize Waypoint
+    new Waypoint({
+      element: item,
+      offset: '50%',
+      handler: function(direction) {
+        if (direction === 'down') {
+          // Animate progress bars to their respective width
+          progressBars.forEach(el => {
+            el.style.width = el.getAttribute('aria-valuenow') + '%';
+          });
+        } else {
+          // Reset progress bars when scrolling up
+          resetProgressBars();
+        }
+      }
+    });
+  
+    // Handle visibility change events (e.g., tab switching)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') {
+        // Reset progress bars when page becomes inactive
+        resetProgressBars();
+      } else if (document.visibilityState === 'visible') {
+        // Animate progress bars again when page becomes active
+        progressBars.forEach(el => {
+          el.style.width = el.getAttribute('aria-valuenow') + '%';
+        });
+      }
+    });
+  });
 
   /**
    * Initiate Pure Counter

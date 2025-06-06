@@ -816,11 +816,23 @@ section,
   height: 10px;
 }
 
+.about .progress-bar-wrap2 {
+  background: color-mix(in srgb, var(--default-color), transparent 90%);
+  height: 10px;
+}
+
 .about .progress-bar {
   width: 1px;
   height: 10px;
   transition: 0.9s;
   background-color: var(--accent-color);
+}
+
+.about .progress-barTools {
+  width: 1px;
+  height: 10px;
+  transition: 0.9s;
+  background-color: rgb(255, 52, 52);
 }
 
 .about .about-me h4 {
