@@ -122,93 +122,93 @@
   /**
    * Animate the skills items on reveal
    */
-  let skillsAnimation = document.querySelectorAll('.skills-animation');
+  let progressBars = document.querySelectorAll('.progress-bar');
 
-  skillsAnimation.forEach((item) => {
-    // Store progress bars for each skill item
-    let progressBars = item.querySelectorAll('.progress .progress-bar');
+  let observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      const bar = entry.target;
+      const value = bar.getAttribute('aria-valuenow');
   
-    // Function to reset progress bar width to 0
-    const resetProgressBars = () => {
-      progressBars.forEach(el => {
-        el.style.width = '0%';
-      });
-    };
-  
-    // Initialize Waypoint
-    new Waypoint({
-      element: item,
-      offset: '50%',
-      handler: function(direction) {
-        if (direction === 'down') {
-          // Animate progress bars to their respective width
-          progressBars.forEach(el => {
-            el.style.width = el.getAttribute('aria-valuenow') + '%';
-          });
-        } else {
-          // Reset progress bars when scrolling up
-          resetProgressBars();
-        }
+      if (entry.isIntersecting) {
+        // Animate when bar becomes visible
+        bar.style.width = value + '%';
+      } else {
+        // Reset when bar goes out of view
+        bar.style.width = '0%';
       }
     });
-  
-    // Handle visibility change events (e.g., tab switching)
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden') {
-        // Reset progress bars when page becomes inactive
-        resetProgressBars();
-      } else if (document.visibilityState === 'visible') {
-        // Animate progress bars again when page becomes active
-        progressBars.forEach(el => {
-          el.style.width = el.getAttribute('aria-valuenow') + '%';
-        });
-      }
-    });
+  }, {
+    threshold: 0.6 // Animate when 60% of the bar is visible
   });
   
-  let skillsAnimation1 = document.querySelectorAll('.skills-animation');
+  // Observe each bar
+  progressBars.forEach(bar => observer.observe(bar));
+  
+  let progressBars1 = document.querySelectorAll('.progress-barTools');
 
-  skillsAnimation1.forEach((item) => {
-    // Store progress bars for each skill item
-    let progressBars = item.querySelectorAll('.progress .progress-barTools');
+  let observer1 = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      const bar = entry.target;
+      const value = bar.getAttribute('aria-valuenow');
   
-    // Function to reset progress bar width to 0
-    const resetProgressBars = () => {
-      progressBars.forEach(el => {
-        el.style.width = '0%';
-      });
-    };
-  
-    // Initialize Waypoint
-    new Waypoint({
-      element: item,
-      offset: '50%',
-      handler: function(direction) {
-        if (direction === 'down') {
-          // Animate progress bars to their respective width
-          progressBars.forEach(el => {
-            el.style.width = el.getAttribute('aria-valuenow') + '%';
-          });
-        } else {
-          // Reset progress bars when scrolling up
-          resetProgressBars();
-        }
+      if (entry.isIntersecting) {
+        // Animate when bar becomes visible
+        bar.style.width = value + '%';
+      } else {
+        // Reset when bar goes out of view
+        bar.style.width = '0%';
       }
     });
-  
-    // Handle visibility change events (e.g., tab switching)
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden') {
-        // Reset progress bars when page becomes inactive
-        resetProgressBars();
-      } else if (document.visibilityState === 'visible') {
-        // Animate progress bars again when page becomes active
-        progressBars.forEach(el => {
-          el.style.width = el.getAttribute('aria-valuenow') + '%';
-        });
-      }
-    });
+  }, {
+    threshold: 0.6 // Animate when 60% of the bar is visible
   });
+  
+  // Observe each bar
+  progressBars1.forEach(bar => observer1.observe(bar));
+  
+  // let skillsAnimation1 = document.querySelectorAll('.skills-animation');
+
+  // skillsAnimation1.forEach((item) => {
+  //   // Store progress bars for each skill item
+  //   let progressBars = item.querySelectorAll('.progress .progress-barTools');
+  
+  //   // Function to reset progress bar width to 0
+  //   const resetProgressBars = () => {
+  //     progressBars.forEach(el => {
+  //       el.style.width = '0%';
+  //     });
+  //   };
+  
+  //   // Initialize Waypoint
+  //   new Waypoint({
+  //     element: item,
+  //     offset: '50%',
+  //     handler: function(direction) {
+  //       if (direction === 'down') {
+  //         // Animate progress bars to their respective width
+  //         progressBars.forEach(el => {
+  //           el.style.width = el.getAttribute('aria-valuenow') + '%';
+  //         });
+  //       } else {
+  //         // Reset progress bars when scrolling up
+  //         resetProgressBars();
+  //       }
+  //     }
+  //   });
+  
+  //   // Handle visibility change events (e.g., tab switching)
+  //   document.addEventListener('visibilitychange', () => {
+  //     if (document.visibilityState === 'hidden') {
+  //       // Reset progress bars when page becomes inactive
+  //       resetProgressBars();
+  //     } else if (document.visibilityState === 'visible') {
+  //       // Animate progress bars again when page becomes active
+  //       progressBars.forEach(el => {
+  //         el.style.width = el.getAttribute('aria-valuenow') + '%';
+  //       });
+  //     }
+  //   });
+  // });
 
   /**
    * Initiate Pure Counter

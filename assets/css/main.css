@@ -824,9 +824,17 @@ section,
 .about .progress-bar {
   width: 1px;
   height: 10px;
-  transition: 0.9s;
+  transition: 0.9s ease-in-out ;
   background-color: var(--accent-color);
 }
+
+/* .progress-bar {
+  width: 0%;
+  height: 10px;
+  transition: width 0.9s ease-in-out;
+  background-color: rgb(255, 52, 52);
+} */
+
 
 .about .progress-barTools {
   width: 1px;
