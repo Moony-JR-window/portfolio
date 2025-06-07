@@ -15,6 +15,25 @@ document.addEventListener("DOMContentLoaded", function () {
         localStorage.setItem('userCount', userCount.toString());
     }
 
+    const formMode = document.getElementById("formMode");
+    const usernameInput = document.getElementById("username");
+    const subjectInput = document.getElementById("subject");
+
+    formMode.addEventListener("change", function () {
+        if (this.value === "anonymous") {
+            usernameInput.value = "anonymous@gmail.com";
+            usernameInput.disabled = true;
+
+            subjectInput.value = "anonymous Subject";
+            subjectInput.disabled = true;
+        } else {
+            usernameInput.value = "";
+            usernameInput.disabled = false;
+
+            subjectInput.disabled = false;
+        }
+    });
+
     // Handle form submission
     const contactForm = document.getElementById("contactForm");
     if (contactForm) {
@@ -28,7 +47,7 @@ document.addEventListener("DOMContentLoaded", function () {
             const sendButton = document.getElementById("sendButton");
             const responseMessage = document.getElementById("responseMessage");
 
-            const apiUrl = "https://back-endportfolio-production.up.railway.app/api/v1/message/send";
+            const apiUrl = "https://helpful-on-corgi.ngrok-free.app/api/v1/message/send";
             const requestBody = { username, subject, message };
 
             try {
