@@ -1,0 +1,113 @@
+/* Dark mode styles */
+.dark-mode {
+    background-color: #121212;
+    color: #ffffff;
+}
+
+.dark-mode .header,
+.dark-mode .navmenu,
+.dark-mode  {
+    background-color: #1a1a1a;
+    color: #ffffff;
+}
+
+
+.dark-mode #Framework h5 {
+    color: #ffffff;
+}
+.dark-mode #Framework div h5 {
+    color: #ffffff;
+}
+
+.dark-mode h2,.dark-mode h3,.dark-mode h4,.dark-mode h5 {
+    color: #ffffff;
+}
+
+.dark-mode #darkText {
+    color: #ffffff;
+}
+
+.dark-mode .resume-title {
+    color: #ffffff;
+}
+.dark-mode .resume-item {
+    color: #ffffff;
+}
+
+.dark-mode span {
+    color: #ffffff;
+}
+
+.dark-mode  #progressDark {
+    color: #ff3f3f;
+}
+
+.dark-mode .dark-toggle i {
+    color: #ffffff;
+}
+
+.dark-mode .navmenu ul {
+    background-color: #1a1a1a;
+}
+
+.dark-mode .section {
+    background-color: #1e1e1e;
+    color: #ffffff;
+}
+
+.dark-mode .containerDark{
+    background-color: #121212;
+}
+
+.dark-mode a {
+    color: #b742ff;
+}
+
+.dark-mode .progress-bar {
+    background-color: #0145ff;
+}
+
+.dark-mode .progress-barTools {
+    background-color: #bb86fc;
+}
+
+.dark-mode .form-control {
+    background-color: #2d2d2d;
+    color: #ffffff;
+    border-color: #444;
+}
+
+.dark-mode .form-control:focus {
+    background-color: #333;
+    color: #ffffff;
+    border-color: #bb86fc;
+    box-shadow: 0 0 0 0.25rem rgba(187, 134, 252, 0.25);
+}
+
+.dark-mode .blurred {
+    color: #bb86fc !important;
+}
+
+.dark-mode .fromContact{
+    background-color: #333;
+    color: #ffffff;
+}
+
+.dark-mode #contactForm {
+    background-color: #333;
+    color: #ffffff;
+    border: none;
+}
+
+.dark-mode select {
+    color: #ffffff;
+}
+
+.dark-mode .text-center{
+    background-color: #333;
+    color: #ffffff;
+}
+
+.dark-mode .copyright{
+    background-color: #0078ff;
+}

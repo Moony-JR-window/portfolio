@@ -27,6 +27,7 @@
   <!-- Main CSS File -->
   <link href="assets/css/main.css" rel="stylesheet">
   <link href="assets/css/hideFeature.css" rel="stylesheet">
+  <link href="assets/css/dark.css" rel="stylesheet">
 
 
   <!-- =======================================================
@@ -55,6 +56,7 @@
           <li><a href="#about">About</a></li>
           <li><a href="#resume">Resume</a></li>
           <li><a href="#footer">End-Page</a></li>
+          <span class="dark-toggle"><i class="bi bi-moon-stars " id="darkIcon" ></i> </span>
         </ul>
         <i class="mobile-nav-toggle d-xl-none bi bi-list"></i>
       </nav>
@@ -80,7 +82,7 @@
     <!-- About Section -->
     <section id="about" class="about section">
 
-      <div class="container" data-aos="fade-up" data-aos-delay="100">
+      <div class="container containerDark " data-aos="fade-up" data-aos-delay="100">
 
         <div class="row gy-4">
           <div class="col-md-6">
@@ -112,11 +114,11 @@
               </div>
             </div>
 
-            <div class="skills-content skills-animation">
+            <div id="Framework" class="skills-content skills-animation  ">
 
               <h5>Framework Skills</h5>
 
-              <div class="progress">
+              <div id="progressDark" class="progress">
                 <span class="skill"><span>NextJS</span> <i class="val">100%</i></span>
                 <div class="progress-bar-wrap">
                   <div class="progress-bar" role="progressbar" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100"></div>
@@ -196,7 +198,7 @@
             </div>
           </div>
           <div class="col-md-6">
-            <div class="skills-content skills-animation">
+            <div id="Framework" class="skills-content skills-animation">
 
               <h5>Tools </h5>
 
@@ -245,8 +247,8 @@
           <div class="col-lg-6" data-aos="fade-up" data-aos-delay="100">
             <h3 class="resume-title">Sumary</h3>
 
-            <div class="resume-item pb-0">
-              <h4>Rorn Mony</h4>
+            <div  class="resume-item pb-0">
+              <h4 id="darkText" >Rorn Mony</h4>
               <p><em> born at KumpongThom province </em></p>
               <ul>
                 <span class="blur-container" onclick="hbd(this)"> 
@@ -261,7 +263,7 @@
             
             <h3 class="resume-title">Education</h3>
             <div class="resume-item">
-              <h4>Computer Science </h4>
+              <h4 id="darkText" >Computer Science </h4>
               <h5>2024 - Present</h5>
               <p><em>Royal of Phnom Penh (rupp) </em></p>
               <p> I'm years four at rupp develop project name Dental clinic management system </p>
@@ -271,7 +273,7 @@
             </div><!-- Edn Resume Item -->
 
             <div class="resume-item">
-              <h4>Computer Science </h4>
+              <h4 id="darkText" >Computer Science </h4>
               <h5>2023 - 2024</h5>
               <p><em>Royal of Phnom Penh (rupp)</em></p>
               <p>I'm years four at rupp develop project name Delevery system </p>
@@ -280,7 +282,7 @@
             </div><!-- Edn Resume Item -->
 
             <div class="resume-item">
-              <h4>Computer Science </h4>
+              <h4 id="darkText" >Computer Science </h4>
               <h5>2022 - 2023</h5>
               <p><em>Royal of Phnom Penh (rupp)</em></p>
               <p>I'm years four at rupp develop project name e-commerce </p>
@@ -289,7 +291,7 @@
             </div><!-- Edn Resume Item -->
 
             <div class="resume-item">
-              <h4>Computer Science </h4>
+              <h4 id="darkText" >Computer Science </h4>
               <h5>2021 - 2022</h5>
               <p><em>Royal of Phnom Penh (rupp)</em></p>
             </div><!-- Edn Resume Item -->
@@ -298,7 +300,7 @@
           <div class="col-lg-6" data-aos="fade-up" data-aos-delay="200">
             <h3 class="resume-title">Professional Experience</h3>
             <div class="resume-item">
-              <h4>Wing Bank</h4>
+              <h4 id="darkText" >Wing Bank</h4>
               <h5>2024 - 2025</h5>
               <p><em> 3 month Apprenties at WinkBank position back-end </em></p>
               <ul>
@@ -319,7 +321,7 @@
             </div><!-- Edn Resume Item -->
 
             <div class="resume-item">
-              <h4>SabaiCode School</h4>
+              <h4 id="darkText" >SabaiCode School</h4>
               <h5>2024 - 2024</h5>
               <p><em>comformant (6months) 2024-2024</em></p>
               <ul>
@@ -344,10 +346,10 @@
 
     </section><!-- /Resume Section -->
 
-    <div class="container">
-      <form id="contactForm" class="p-4 border rounded shadow-sm bg-white">
-        <div class="text-center mb-4">
-          <select id="formMode" class="form-select w-auto d-inline-block text-center fs-4 border-0">
+    <div class="container fromContact ">
+      <form id="contactForm" class="p-4  rounded shadow-sm ">
+        <div class="text-center mb-4 ">
+          <select id="formMode" class=" w-auto d-inline-block text-center fs-4 border-0">
             <option value="contact" selected>Contact Me</option>
             <option value="anonymous">Anonymous</option>
           </select>
@@ -426,6 +428,7 @@
   <script src="assets/js/hidelFeature.js"></script>
   <script src="back-end/script.js"></script>
   <script src="back-end/countUser.js"></script>
+  <script src="back-end/darkmode.js"></script>
 
 </body>
 
