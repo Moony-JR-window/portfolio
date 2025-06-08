@@ -111,3 +111,14 @@
 .dark-mode .copyright{
     background-color: #0078ff;
 }
+
+.fromContact ::placeholder {
+    color: #999; /* Light gray for better visibility on light backgrounds */
+    opacity: 1; /* Ensure full visibility */
+  }
+  
+  /* Dark mode placeholder */
+  .dark-mode .fromContact ::placeholder {
+    color: #ffffff; /* White color */
+    opacity: 0.8; /* Slightly transparent for better aesthetics */
+  }
