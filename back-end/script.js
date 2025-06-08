@@ -53,10 +53,9 @@ document.addEventListener("DOMContentLoaded", function () {
             try {
                 sendButton.disabled = true;
                 sendButton.innerText = "Sending...";
-
                 const response = await fetch(apiUrl, {
                     method: "POST",
-                    headers: { 
+                    headers: {
                         "Content-Type": "application/json",
                         "accept": "*/*"
                     },
