@@ -1,17 +1,18 @@
-/* Dark mode styles */
+/* 
 .dark-mode {
     background-color: #121212;
     color: #ffffff;
 }
 
 .dark-mode .header,
-.dark-mode .navmenu,
-.dark-mode  {
+.dark-mode .navmenu {
     background-color: #1a1a1a;
     color: #ffffff;
+} */
+
+#dark-typing {
+    background-color: red ;
 }
-
-
 .dark-mode #Framework h5 {
     color: #ffffff;
 }
@@ -103,7 +104,7 @@
     color: #ffffff;
 }
 
-.dark-mode .text-center{
+.dark-mode .selectOption {
     background-color: #333;
     color: #ffffff;
 }
