@@ -110,7 +110,6 @@ function startMove(e) {
     document.addEventListener(isTouch ? "touchmove" : "mousemove", moveElement);
     document.addEventListener(isTouch ? "touchend" : "mouseup", stopMoving);
   }
-
   activeUser.addEventListener("mousedown", startMove);
   activeUser.addEventListener("touchstart", startMove);
 
