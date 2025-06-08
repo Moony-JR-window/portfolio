@@ -18,22 +18,22 @@ Dark mode styles
 .dark-mode #Framework div h5 {
     color: #ffffff;
 }
-.dark-mode h4 {
-    color: #ffffff;
-}
-.dark-mode h2 {
-    color: #ffffff;
-}
-.dark-mode .resume-title {
+
+.dark-mode h2,.dark-mode h3,.dark-mode h4,.dark-mode h5 {
     color: #ffffff;
 }
 
-.dark-mode h6 {
+.dark-mode #darkText {
     color: #ffffff;
 }
-.dark-mode h1 {
+
+.dark-mode .resume-title {
     color: #ffffff;
 }
+.dark-mode .resume-item {
+    color: #ffffff;
+}
+
 .dark-mode span {
     color: #ffffff;
 }
