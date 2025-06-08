@@ -56,7 +56,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
                 const response = await fetch(apiUrl, {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
+                    headers: { 
+                        "Content-Type": "application/json",
+                        "accept": "*/*"
+                    },
                     body: JSON.stringify(requestBody)
                 });
 
