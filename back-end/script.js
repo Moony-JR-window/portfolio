@@ -62,9 +62,16 @@ document.addEventListener("DOMContentLoaded", function () {
 
                 console.log("Body Req:", requestBody);
 
-                if (response.ok) { // ✅ Check if the response is successful
+                if (response.ok) {
                     responseMessage.innerHTML = `<div class="alert alert-success">Message sent successfully!</div>`;
-                    contactForm.reset();
+
+                    if (formMode.value === "anonymous") {
+                        // Clear only the message field
+                        document.getElementById("message").value = "";
+                    } else {
+                        // Reset the whole form
+                        contactForm.reset();
+                    }
                 } else {
                     responseMessage.innerHTML = `<div class="alert alert-danger">Error: Something went wrong</div>`;
                 }
