@@ -1,4 +1,4 @@
-Dark mode styles
+/* Dark mode styles */
 .dark-mode {
     background-color: #121212;
     color: #ffffff;
@@ -6,7 +6,7 @@ Dark mode styles
 
 .dark-mode .header,
 .dark-mode .navmenu,
-.dark-mode .footer {
+.dark-mode  {
     background-color: #1a1a1a;
     color: #ffffff;
 }
@@ -90,9 +90,24 @@ Dark mode styles
 
 .dark-mode .fromContact{
     background-color: #333;
-    /* color: #ffffff; */
+    color: #ffffff;
 }
-.dark-mode .fromContact form {
+
+.dark-mode #contactForm {
     background-color: #333;
-    /* color: #ffffff; */
+    color: #ffffff;
+    border: none;
+}
+
+.dark-mode select {
+    color: #ffffff;
+}
+
+.dark-mode .text-center{
+    background-color: #333;
+    color: #ffffff;
+}
+
+.dark-mode .copyright{
+    background-color: #0078ff;
 }
