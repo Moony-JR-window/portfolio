@@ -1697,3 +1697,14 @@ section,
 .starter-section {
   /* Add your styles here */
 }
+
+.dark-toggle i {
+  color: rgb(1, 1, 1);
+  position: absolute;
+  font-size: xx-large;
+  right: 2%;
+  top: 0;
+  padding: 12px;
+  /* background-color: #0078ff; */
+}
+
