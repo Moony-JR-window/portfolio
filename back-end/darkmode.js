@@ -37,10 +37,10 @@ function initializeDarkMode() {
     // Check for saved user preference
     const savedTheme = localStorage.getItem('theme');
     // Check system preference
-    const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    // const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     
     // Apply theme based on preferences
-    if (savedTheme === 'dark' || (!savedTheme && systemPrefersDark)) {
+    if (savedTheme === 'dark' ) {
         body.classList.add('dark-mode');
         darkIcon.classList.replace('bi-moon-stars', 'bi-moon-stars-fill');
     }
