@@ -46,11 +46,12 @@
 .dark-mode .dark-toggle i {
     color: #ffffff;
 }
-
-.dark-mode .navmenu ul {
-    background-color: #1a1a1a;
-}
-
+@media (max-width: 1199px) {
+    .dark-mode .navmenu ul {
+        background-color: #1a1a1a;
+    }
+  }
+/* #0a090f */
 .dark-mode .section {
     background-color: #1e1e1e;
     color: #ffffff;
