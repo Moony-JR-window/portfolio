@@ -27,30 +27,21 @@
 
 // // Initialize
 // Darkmode();
+function setItem(key, value) {
+  localStorage.setItem(key, value);
+}
 
-function setCookie(name, value, days = 365) {
-    const date = new Date();
-    date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
-    const expires = "expires=" + date.toUTCString();
-    document.cookie = `${name}=${value};${expires};path=/`;
-  }
-  
-  function getCookie(name) {
-    const cookies = document.cookie.split(';');
-    for (let cookie of cookies) {
-      const [cookieName, cookieValue] = cookie.trim().split('=');
-      if (cookieName === name) return cookieValue;
-    }
-    return null;
-  }
-  
+function getItem(key) {
+  return localStorage.getItem(key);
+}
+
 
 function initializeDarkMode() {
     const darkIcon = document.getElementById('darkIcon');
     const body = document.body;
     
     // Check for saved user preference
-    const savedTheme = getCookie('theme');
+    const savedTheme = getItem('theme');
     // Check system preference
     // const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     
@@ -66,10 +57,10 @@ function initializeDarkMode() {
         
         if (body.classList.contains('dark-mode')) {
             darkIcon.classList.replace('bi-moon-stars', 'bi-moon-stars-fill');
-            setCookie('theme', 'dark');
+            setItem('theme', 'dark');
         } else {
             darkIcon.classList.replace('bi-moon-stars-fill', 'bi-moon-stars');
-            setCookiem('theme', 'light');
+            setItem('theme', 'light');
         }
     });
 }
