@@ -128,14 +128,30 @@ async function Viewer() {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
     const data = await response.json();
-    console.log(data.data); 
+    const targetValue = parseInt(data.data);
+    const currentValue = parseInt(viewer.innerText);
     // setCookie('viwer', data.data);
-    viewer.innerText = `${data.data}`
+    // viewer.innerText = `${data.data}`
+    animateCount(viewer, currentValue, targetValue, 2000); // animate in 1 second
     return data;
   } catch (error) {
     console.error('Error registering device:', error);
     throw error;
   }
+}
+function animateCount(element, start, end, duration) {
+  const range = end - start;
+  const stepTime = Math.abs(Math.floor(duration / range));
+  let current = start;
+  const increment = end > start ? 1 : -1;
+
+  const timer = setInterval(() => {
+    current += increment;
+    element.innerText = current;
+    if (current === end) {
+      clearInterval(timer);
+    }
+  }, stepTime);
 }
 
 Viewer()

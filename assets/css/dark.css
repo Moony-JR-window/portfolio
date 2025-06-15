@@ -11,16 +11,21 @@
 } */
 
 #dark-typing {
-    background-color: red ;
+    background-color: red;
 }
+
 .dark-mode #Framework h5 {
     color: #ffffff;
 }
+
 .dark-mode #Framework div h5 {
     color: #ffffff;
 }
 
-.dark-mode h2,.dark-mode h3,.dark-mode h4,.dark-mode h5 {
+.dark-mode h2,
+.dark-mode h3,
+.dark-mode h4,
+.dark-mode h5 {
     color: #ffffff;
 }
 
@@ -31,6 +36,7 @@
 .dark-mode .resume-title {
     color: #ffffff;
 }
+
 .dark-mode .resume-item {
     color: #ffffff;
 }
@@ -39,25 +45,27 @@
     color: #ffffff;
 }
 
-.dark-mode  #progressDark {
+.dark-mode #progressDark {
     color: #ff3f3f;
 }
 
 .dark-mode .dark-toggle i {
     color: #ffffff;
 }
+
 @media (max-width: 1199px) {
     .dark-mode .navmenu ul {
         background-color: #1a1a1a;
     }
-  }
+}
+
 /* #0a090f */
 .dark-mode .section {
     background-color: #1e1e1e;
     color: #ffffff;
 }
 
-.dark-mode .containerDark{
+.dark-mode .containerDark {
     background-color: #121212;
 }
 
@@ -90,7 +98,7 @@
     color: #bb86fc !important;
 }
 
-.dark-mode .fromContact{
+.dark-mode .fromContact {
     background-color: #333;
     color: #ffffff;
 }
@@ -110,17 +118,27 @@
     color: #ffffff;
 }
 
-.dark-mode .copyright{
+.dark-mode .copyright {
     background-color: #0078ff;
 }
 
 .fromContact ::placeholder {
-    color: #999; /* Light gray for better visibility on light backgrounds */
-    opacity: 1; /* Ensure full visibility */
-  }
-  
-  /* Dark mode placeholder */
-  .dark-mode .fromContact ::placeholder {
-    color: #ffffff; /* White color */
-    opacity: 0.8; /* Slightly transparent for better aesthetics */
-  }
+    color: #999;
+    /* Light gray for better visibility on light backgrounds */
+    opacity: 1;
+    /* Ensure full visibility */
+}
+
+/* Dark mode placeholder */
+.dark-mode .fromContact ::placeholder {
+    color: #ffffff;
+    /* White color */
+    opacity: 0.8;
+    /* Slightly transparent for better aesthetics */
+}
+
+
+
+.dark-mode .dots-loading span {
+    background-color: #cc00ff;
+}
