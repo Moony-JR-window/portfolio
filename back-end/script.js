@@ -61,10 +61,10 @@ document.addEventListener("DOMContentLoaded", function () {
                     },
                     body: JSON.stringify(requestBody)
                 });
+                const res = await response.json();
+                console.log("res :", res);
 
-                console.log("Body Req:", requestBody);
-
-                if (response.ok) {
+                if (res.status == 200 ) {
                     responseMessage.innerHTML = `<div class="alert alert-success">Message sent successfully!</div>`;
 
                     if (formMode.value === "anonymous") {
