@@ -47,7 +47,7 @@ document.addEventListener("DOMContentLoaded", function () {
             const sendButton = document.getElementById("sendButton");
             const responseMessage = document.getElementById("responseMessage");
 
-            const apiUrl = "https://helpful-on-corgi.ngrok-free.app/api/v1/message/send";
+            const apiUrl = "https://mystaticdevserver2.share.zrok.io/api/v1/message/send";
             const requestBody = { username, subject, message };
 
             try {
