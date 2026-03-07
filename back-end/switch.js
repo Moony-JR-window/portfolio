@@ -1,5 +1,6 @@
 const btn = document.getElementById("yearToggle");
 const content = document.getElementById("aboutContent");
+const roleTitle = document.getElementById("roleTitle");
 
 let year = 2025;
 
@@ -32,37 +33,36 @@ focusing on automation testing and software quality.
 btn.addEventListener("click", () => {
 
   // reset animation state
-  content.classList.remove("slide-left-out","slide-right-out","slide-reset");
+  content.classList.remove("slide-left-out", "slide-right-out", "slide-reset");
   void content.offsetWidth; // force reflow (important)
 
-  if(year === 2025){
+  if (year === 2025) {
 
     content.classList.add("slide-left-out");
-
     setTimeout(() => {
+      roleTitle.textContent = "QA Engineer"; // just update role
       content.innerHTML = about2026;
       content.classList.remove("slide-left-out");
       content.classList.add("slide-reset");
       btn.textContent = "2026";
       year = 2026;
-    },250);
+    }, 250);
 
-  }else{
+  } else {
 
     content.classList.add("slide-right-out");
-
     setTimeout(() => {
+      roleTitle.textContent = "full stack developer"; // update role back
       content.innerHTML = about2025;
       content.classList.remove("slide-right-out");
       content.classList.add("slide-reset");
       btn.textContent = "2025";
       year = 2025;
-    },250);
+    }, 250);
 
   }
 
 });
-
 
 
 // const btn = document.getElementById("yearToggle");
@@ -72,12 +72,14 @@ const tip = document.getElementById("yearTip");
 let tipShown = false;
 
 window.addEventListener("load", () => {
-  if(!tipShown){
+  if (!tipShown) {
     tip.classList.add("show");
 
-    setTimeout(()=>{
+    setTimeout(() => {
       tip.classList.remove("show");
       tipShown = true; // mark as shown
     }, 70000);
   }
 });
+
+
