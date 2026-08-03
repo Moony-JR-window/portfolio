@@ -1,4 +1,3 @@
-import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
 import { Poppins, Raleway } from 'next/font/google'
 import './globals.css'
@@ -65,7 +64,7 @@ export default function RootLayout({
       </head>
       <body className="antialiased">
         {children}
-        {process.env.NODE_ENV === 'production' && <Analytics />}
+        {process.env.NODE_ENV === 'production' && ''}
       </body>
     </html>
   )
