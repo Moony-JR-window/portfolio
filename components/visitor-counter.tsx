@@ -152,14 +152,17 @@ useEffect(() => {
       }
       className="fixed bottom-4 left-4 z-999 select-none"
     >
-      <div className="flex items-center gap-2.5 rounded-full border border-border bg-card/80 py-2 pl-1.5 pr-4 shadow-lg backdrop-blur-md">
-        <button
-          type="button"
-          onMouseDown={(e) => {
+      <div
+      onMouseDown={(e) => {
             e.preventDefault()
             startDrag(e.clientX, e.clientY)
           }}
           onTouchStart={(e) => startDrag(e.touches[0].clientX, e.touches[0].clientY)}
+      
+      className="flex items-center gap-2.5 rounded-full border border-border bg-card/80 py-2 pl-1.5 pr-4 shadow-lg backdrop-blur-md">
+        <button
+          type="button"
+          
           aria-label="Drag to move the visitor counter anywhere on screen"
           className="flex h-8 w-6 shrink-0 cursor-grab items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground active:cursor-grabbing"
         >
