@@ -43,6 +43,12 @@ useEffect(() => {
 
   async function load() {
     try {
+       const sessionId = sessionStorage.getItem('mnydev_sessionId') || `visitor-${Date.now()}`;
+      await fetch('/api/online', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId })
+    });
       const isNew = !sessionStorage.getItem("mnydev_visited");
 
       const res = await fetch("/api/visits", {
