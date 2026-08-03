@@ -1,0 +1,72 @@
+import { Analytics } from '@vercel/analytics/next'
+import type { Metadata, Viewport } from 'next'
+import { Poppins, Raleway } from 'next/font/google'
+import './globals.css'
+
+const poppins = Poppins({
+  subsets: ['latin'],
+  weight: ['300', '400', '500', '600', '700'],
+  variable: '--font-poppins',
+})
+
+const raleway = Raleway({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700', '800'],
+  variable: '--font-raleway',
+})
+
+export const metadata: Metadata = {
+  title: 'Rorn Mony — MooNyDev | Full-Stack & QA Engineer',
+  description:
+    'Portfolio of Rorn Mony (MooNyDev), a full-stack web & mobile developer and QA Engineer from Phnom Penh, Cambodia. Skills in Next.js, React, NestJS, and automation testing.',
+  generator: 'v0.app',
+  icons: {
+    icon: [
+      { url: '/favicon-32x32.png', type: 'image/png' },
+      { url: '/icon.svg', type: 'image/svg+xml' },
+    ],
+    apple: '/apple-icon.png',
+  },
+}
+
+export const viewport: Viewport = {
+  colorScheme: 'light dark',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
+    { media: '(prefers-color-scheme: dark)', color: '#1a2230' },
+  ],
+}
+
+const themeScript = `
+(function() {
+  try {
+    var stored = localStorage.getItem('theme');
+    var theme = stored === 'dark' || stored === 'light' ? stored : 'light';
+    document.documentElement.classList.add(theme);
+  } catch (e) {
+    document.documentElement.classList.add('light');
+  }
+})();
+`
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode
+}>) {
+  return (
+    <html
+      lang="en"
+      className={`${poppins.variable} ${raleway.variable} bg-background`}
+      suppressHydrationWarning
+    >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
+      <body className="antialiased">
+        {children}
+        {process.env.NODE_ENV === 'production' && <Analytics />}
+      </body>
+    </html>
+  )
+}
