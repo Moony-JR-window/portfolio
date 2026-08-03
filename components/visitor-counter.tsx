@@ -37,62 +37,50 @@ export function VisitorCounter() {
   const offsetRef = useRef({ x: 0, y: 0 })
   const elRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    let cancelled = false
+  
+useEffect(() => {
+  let cancelled = false;
 
-    async function load() {
-      try {
-        const isNew = !sessionStorage.getItem('mnydev_visited')
-        const res = await fetch('/api/visits', {
-          method: isNew ? 'POST' : 'GET',
-          cache: 'no-store',
-        })
-        if (!res.ok) throw new Error('bad status')
-        const data = (await res.json()) as Visits
-        if (isNew) sessionStorage.setItem('mnydev_visited', '1')
-        if (!cancelled) setVisits(data)
-      } catch {
-        if (!cancelled) setVisits({ total: 0, today: 0 })
+  async function load() {
+    try {
+      const isNew = !sessionStorage.getItem("mnydev_visited");
+
+      const res = await fetch("/api/visits", {
+        method: isNew ? "GET" : "GET",
+        cache: "no-store",
+      });
+
+      if (!res.ok) throw new Error();
+
+      const data: Visits = await res.json();
+
+      if (isNew) {
+        sessionStorage.setItem("mnydev_visited", "1");
+      }
+
+      if (!cancelled) {
+        setVisits(data);
+      }
+    } catch {
+      if (!cancelled) {
+        setVisits({ total: 0, today: 0 });
       }
     }
-
-    load()
-    return () => {
-      cancelled = true
-    }
-  }, [])
-useEffect(() => {
-  let sessionId = localStorage.getItem("visitor_session");
-
-  if (!sessionId) {
-    sessionId = crypto.randomUUID();
-    localStorage.setItem(
-      "visitor_session",
-      sessionId
-    );
   }
 
-  const sendHeartbeat = async () => {
-    await fetch("/api/online", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        sessionId,
-      }),
-    });
+  // First request immediately after mount
+  load();
+
+  // Refresh every 10 seconds
+  const timer = setInterval(load, 10000);
+
+  return () => {
+    cancelled = true;
+    clearInterval(timer);
   };
-
-  sendHeartbeat();
-
-  const timer = setInterval(
-    sendHeartbeat,
-    30000
-  );
-
-  return () => clearInterval(timer);
 }, []);
+
+
   // Free dragging anywhere on screen (mouse + touch).
   useEffect(() => {
     function clamp(clientX: number, clientY: number) {
