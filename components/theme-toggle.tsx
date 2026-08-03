@@ -7,11 +7,23 @@ export function ThemeToggle() {
   const [theme, setTheme] = useState<'light' | 'dark'>('dark')
   const [mounted, setMounted] = useState(false)
 
-  useEffect(() => {
-    setMounted(true)
-    const isDark = document.documentElement.classList.contains('dark')
-    setTheme(isDark ? 'dark' : 'light')
-  }, [])
+useEffect(() => {
+  setMounted(true)
+
+  let savedTheme: "light" | "dark" | null = null
+
+  try {
+    savedTheme = localStorage.getItem("theme") as "light" | "dark" | null
+  } catch {}
+
+  const theme = savedTheme ?? "dark"
+
+  const root = document.documentElement
+  root.classList.remove("light", "dark")
+  root.classList.add(theme)
+
+  setTheme(theme)
+}, [])
 
   function toggle() {
     const next = theme === 'dark' ? 'light' : 'dark'
