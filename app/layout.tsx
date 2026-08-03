@@ -22,10 +22,10 @@ export const metadata: Metadata = {
   generator: 'v0.app',
   icons: {
     icon: [
-      { url: '/favicon-32x32.png', type: 'image/png' },
-      { url: '/icon.svg', type: 'image/svg+xml' },
+      { url: 'https://avatars.githubusercontent.com/u/165788540?v=4', type: 'image/png' },
+      { url: 'https://avatars.githubusercontent.com/u/165788540?v=4', type: 'image/svg+xml' },
     ],
-    apple: '/apple-icon.png',
+    apple: 'https://avatars.githubusercontent.com/u/165788540?v=4',
   },
 }
 
