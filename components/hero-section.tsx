@@ -75,7 +75,7 @@ export function HeroSection() {
           Full-stack web &amp; mobile developer and QA Engineer from Phnom Penh, Cambodia —
           building reliable products across the stack.
         </p>
-        <div className="mt-8 flex flex-wrap gap-3">
+        {/* <div className="mt-8 flex flex-wrap gap-3">
           <a
             href="#contact"
             className="inline-flex items-center rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
@@ -88,13 +88,13 @@ export function HeroSection() {
           >
             View resume
           </a>
-        </div>
+        </div> */}
       </div>
 
       <a
         href="#about"
         aria-label="Scroll to About"
-        className="absolute bottom-6 left-1/2 hidden -translate-x-1/2 flex-col items-center gap-1 text-muted-foreground transition-colors hover:text-primary sm:flex"
+        className="absolute bottom-6 left-10/12 hidden -translate-x-1/2 flex-col items-center gap-1 text-muted-foreground transition-colors hover:text-primary sm:flex"
       >
         <span className="flex h-9 w-5 items-start justify-center rounded-full border border-current p-1">
           <span className="h-1.5 w-1 animate-bounce rounded-full bg-current" />
