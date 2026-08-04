@@ -22,7 +22,7 @@ export default function ChatPopup() {
   } = useChat();
 
   return (
-    <div style={{ position: "fixed", bottom: 20, right: 20, zIndex: 999 }}>
+    <div style={{ position: "fixed", bottom: 80, right: 20, zIndex: 999 }}>
       {latestNotification && !open && (
         <Notification
           message={latestNotification}
