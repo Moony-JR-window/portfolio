@@ -15,9 +15,8 @@ export class ChatSocket {
       this.url = url;
     } else {
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      console.log(`${protocol}//${window.location.host}/api/ws`);
-      
-      this.url = `${protocol}//${window.location.host}/api/ws`;
+    
+      this.url = `wss://moony-lovat.vercel.app/api/ws`;
     }
   }
 
