@@ -10,6 +10,7 @@ export class ChatSocket {
   private shouldReconnect = true;
   private url: string;
 
+  
   constructor(url?: string) {
     if (url) {
       this.url = url;
