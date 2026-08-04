@@ -164,7 +164,9 @@ export default function ChatWindow({
           <div style={{ fontWeight: 700, fontSize: 14 }}>💬 Community Chat</div>
           <OnlineBadge count={onlineCount} />
         </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <div
+        className=" z-40"
+         style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <button
             onClick={() => setShowVisitors((s) => !s)}
             title="Visitors"
