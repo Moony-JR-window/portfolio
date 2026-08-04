@@ -162,7 +162,7 @@ export default function ChatWindow({
       >
         <div>
           <div style={{ fontWeight: 700, fontSize: 14 }}>💬 Community Chat</div>
-          <OnlineBadge count={onlineCount} />
+          <OnlineBadge count={visitors.length} />
         </div>
         <div
         className=" z-40"
