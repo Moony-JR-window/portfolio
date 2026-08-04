@@ -5,6 +5,7 @@ interface Props {
 }
 
 export default function OnlineBadge({ count }: Props) {
+
   return (
     <div
       style={{

@@ -37,8 +37,11 @@ export default function ChatWindow({
   const [nicknameDraft, setNicknameDraft] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [sending, setSending] = useState(false);  
-
+  const [sending, setSending] = useState(false);
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null)
+  const draggingRef = useRef(false)
+  const offsetRef = useRef({ x: 0, y: 0 })
+  const elRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
@@ -65,23 +68,87 @@ export default function ChatWindow({
     setEditingNickname(false);
   }
 
+
+  // Free dragging anywhere on screen (mouse + touch).
+  useEffect(() => {
+    function clamp(clientX: number, clientY: number) {
+      const width = elRef.current?.offsetWidth ?? 220
+      const height = elRef.current?.offsetHeight ?? 48
+      const margin = 8
+      const x = Math.max(
+        margin,
+        Math.min(clientX - offsetRef.current.x, window.innerWidth - width - margin),
+      )
+      const y = Math.max(
+        margin,
+        Math.min(clientY - offsetRef.current.y, window.innerHeight - height - margin),
+      )
+      return { x, y }
+    }
+    const move = (clientX: number, clientY: number) => {
+      if (draggingRef.current) setPos(clamp(clientX, clientY))
+    }
+    const onMouseMove = (e: MouseEvent) => move(e.clientX, e.clientY)
+    const onTouchMove = (e: TouchEvent) => {
+      if (draggingRef.current) {
+        e.preventDefault()
+        move(e.touches[0].clientX, e.touches[0].clientY)
+      }
+    }
+    const onUp = () => {
+      draggingRef.current = false
+    }
+
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onUp)
+    window.addEventListener('touchmove', onTouchMove, { passive: false })
+    window.addEventListener('touchend', onUp)
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onUp)
+      window.removeEventListener('touchmove', onTouchMove)
+      window.removeEventListener('touchend', onUp)
+    }
+  }, [])
+
+  function startDrag(clientX: number, clientY: number) {
+    const el = elRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    offsetRef.current = { x: clientX - rect.left, y: clientY - rect.top }
+    setPos({ x: rect.left, y: rect.top })
+    draggingRef.current = true
+  }
+
   return (
     <div
+      ref={elRef}
+      className="backdrop-blur-md"
       style={{
+        position: "fixed",
+        left: pos?.x ?? window.innerWidth - 340,
+        top: pos?.y ?? window.innerHeight - 480,
+
         width: 320,
         height: 440,
-        background: "#fff",
+
         borderRadius: 12,
         boxShadow: "0 8px 28px rgba(0,0,0,0.25)",
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
+        zIndex: 9999,
+
         fontFamily:
           "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
       }}
     >
       {/* Header */}
       <div
+        onMouseDown={(e) => startDrag(e.clientX, e.clientY)}
+        onTouchStart={(e) =>
+          startDrag(e.touches[0].clientX, e.touches[0].clientY)
+        }
         style={{
           background: "#0084ff",
           color: "#fff",
@@ -89,6 +156,8 @@ export default function ChatWindow({
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
+          userSelect: "none",
+          touchAction: "none",
         }}
       >
         <div>
@@ -199,7 +268,6 @@ export default function ChatWindow({
               flex: 1,
               overflowY: "auto",
               padding: "10px 12px",
-              background: "#fff",
             }}
           >
             {messages.map((m) => (
@@ -238,12 +306,12 @@ export default function ChatWindow({
               style={{
                 flex: 1,
                 border: "none",
-                background: "#f0f2f5",
                 borderRadius: 18,
                 padding: "8px 14px",
                 fontSize: 14,
                 outline: "none",
               }}
+              className="backdrop-blur-md"
             />
             <button
               onClick={handleSubmit}
