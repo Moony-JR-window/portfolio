@@ -102,7 +102,7 @@ export default function BotCommandMenu({
                         style={itemStyle}
                         onClick={() =>
                             window.open(
-                                "https://github.com/user-attachments/files/30727516/adbTool.zip",
+                                "https://github.com/user-attachments/files/30728375/adbTool.zip",
                                 "_blank"
                             )
                         }
