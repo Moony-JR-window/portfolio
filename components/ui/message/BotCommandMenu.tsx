@@ -67,14 +67,34 @@ export default function BotCommandMenu({
             {showBotMenu && (
                 <>
                     <div
-                        className=" bg-gray-700 "
-                        style={{
-                            padding: 12,
-                            fontWeight: 700,
-                            borderBottom: "1px solid #eee",
-                        }}
+                        className="relative overflow-hidden rounded-t-xl bg-gradient-to-r from-indigo-600 via-purple-600 to-blue-600 px-5 py-4 text-white"
                     >
-                        🤖 ADB Tool Bot
+                        {/* Background Glow */}
+                        <div className="absolute -right-6 -top-6 h-20 w-20 rounded-full bg-white/10 blur-xl" />
+                        <div className="absolute -left-8 bottom-0 h-16 w-16 rounded-full bg-white/5 blur-lg" />
+
+                        <div className="relative flex items-center gap-3">
+                            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/20 text-xl backdrop-blur-sm">
+                                🤖
+                            </div>
+
+                            <div className="flex-1">
+                                <h2 className="text-lg font-bold tracking-wide">
+                                    Welcome to My Bot
+                                </h2>
+
+                                <div className="mt-1 flex items-center gap-2 text-sm text-white/80">
+                                    <span>Ready to help</span>
+
+                                    {/* Typing Animation */}
+                                    <div className="flex gap-1">
+                                        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-white [animation-delay:0ms]" />
+                                        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-white [animation-delay:150ms]" />
+                                        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-white [animation-delay:300ms]" />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <button
