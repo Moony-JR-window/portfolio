@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import MessageBubble from "./MessageBubble";
 import OnlineBadge from "./OnlineBadge";
 import { Visitor, ChatMessage } from "@/types/chat";
+import BotCommandMenu from "./BotCommandMenu";
 
 interface Props {
   you: Visitor | null;
@@ -42,6 +43,10 @@ export default function ChatWindow({
   const draggingRef = useRef(false)
   const offsetRef = useRef({ x: 0, y: 0 })
   const elRef = useRef<HTMLDivElement>(null)
+  const [showCommands, setShowCommands] = useState(false);
+  const [showBotMenu, setShowBotMenu] = useState(false);
+
+
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
@@ -49,14 +54,31 @@ export default function ChatWindow({
 
   function handleChange(value: string) {
     setDraft(value);
+
+    // Show slash command popup
+    setShowCommands(value.startsWith("/"));
+
     onTyping(true);
+
     if (typingTimer.current) clearTimeout(typingTimer.current);
     typingTimer.current = setTimeout(() => onTyping(false), 1500);
   }
 
+  // function handleSubmit() {
+  //   const text = draft.trim();
+  //   if (!text) return;
+  //   onSend(text);
+  //   setDraft("");
+  //   onTyping(false);
+  // }
+
   function handleSubmit() {
     const text = draft.trim();
     if (!text) return;
+
+    // Prevent sending slash commands
+    if (text.startsWith("/")) return;
+
     onSend(text);
     setDraft("");
     onTyping(false);
@@ -165,8 +187,8 @@ export default function ChatWindow({
           <OnlineBadge count={visitors.length} />
         </div>
         <div
-        className=" z-40"
-         style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          className=" z-40"
+          style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <button
             onClick={() => setShowVisitors((s) => !s)}
             title="Visitors"
@@ -293,6 +315,7 @@ export default function ChatWindow({
           {/* Input */}
           <div
             style={{
+              position: "relative", // IMPORTANT
               display: "flex",
               alignItems: "center",
               padding: 8,
@@ -300,6 +323,17 @@ export default function ChatWindow({
               gap: 8,
             }}
           >
+            <BotCommandMenu
+              showCommands={showCommands}
+              showBotMenu={showBotMenu}
+              onOpenBot={() => {
+                setShowCommands(false);
+                setShowBotMenu(true);
+                setDraft("");
+              }}
+              onCloseBot={() => setShowBotMenu(false)}
+            />
+
             <input
               value={draft}
               onChange={(e) => handleChange(e.target.value)}
@@ -315,16 +349,10 @@ export default function ChatWindow({
               }}
               className="backdrop-blur-md"
             />
+
             <button
               onClick={handleSubmit}
               disabled={!draft.trim()}
-              style={{
-                border: "none",
-                background: "transparent",
-                color: draft.trim() ? "#0084ff" : "#bcc0c4",
-                fontSize: 20,
-                cursor: draft.trim() ? "pointer" : "default",
-              }}
             >
               ➤
             </button>
@@ -342,4 +370,14 @@ const iconBtnStyle: React.CSSProperties = {
   cursor: "pointer",
   fontSize: 14,
   padding: 2,
+};
+
+const botItemStyle: React.CSSProperties = {
+  width: "100%",
+  border: "none",
+  background: "#fff",
+  padding: 12,
+  cursor: "pointer",
+  textAlign: "left",
+  borderBottom: "1px solid #eee",
 };
