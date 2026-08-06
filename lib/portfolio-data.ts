@@ -101,10 +101,16 @@ export const experience = [
     title: 'Wing Bank',
     period: '2025 - present',
     role: 'QA Engineer',
+    // details: [
+    //   'Executed automated mobile testing for Wing Bank, WingPay, POS applications, and other channels, ensuring stability, usability, and functionality after patch releases. Designed and validated API endpoints to verify data accuracy, reliability, and proper functionality across multiple platforms.',
+    //   'Performed performance and load testing using Apache JMeter on remote servers via SSH, analyzing system scalability, response times, and stability under high traffic. Developed and maintained reusable automation scripts and test frameworks.',
+    //   'Integrated automation test results with ReportPortal for real-time reporting, defect tracking, and analytics. Executed automated test scripts as part of CI/CD pipelines, validating application integrity before production deployments.',
+    // ],
     details: [
-      'Executed automated mobile testing for Wing Bank, WingPay, POS applications, and other channels, ensuring stability, usability, and functionality after patch releases. Designed and validated API endpoints to verify data accuracy, reliability, and proper functionality across multiple platforms.',
-      'Performed performance and load testing using Apache JMeter on remote servers via SSH, analyzing system scalability, response times, and stability under high traffic. Developed and maintained reusable automation scripts and test frameworks.',
-      'Integrated automation test results with ReportPortal for real-time reporting, defect tracking, and analytics. Executed automated test scripts as part of CI/CD pipelines, validating application integrity before production deployments.',
+      'Executed manual and automated testing for Wing Bank mobile applications all platform, including Wing Bank, WingPay FC (Android), and WingPay POS devices, validating new features, regression fixes, and patch releases to ensure application stability, functionality, and user experience.',
+      'Designed, executed, and maintained API test cases for the Wing Bank application, verifying request/response accuracy, business logic, data integrity, authentication, and backend service integration using REST APIs.',
+      'Performed performance and load testing using Apache JMeter and k6 for WingPay POS backend services, evaluating system scalability, response times, throughput, and stability under concurrent user workloads.',
+      'Developed and maintained reusable mobile automation frameworks using Appium and Katalon Studio, integrating test execution with ReportPortal for centralized reporting, defect analysis, and CI/CD pipeline validation before production deployments.'
     ],
   },
   {
@@ -117,6 +123,10 @@ export const experience = [
       'Containerized the application using Docker to ensure consistent runtime behavior across environments.',
       'Built both front-end and back-end features, ensuring smooth integration between the client application and server APIs.',
     ],
+    link: {
+      label: "Env Manager",
+      url: "https://env-manager.ducksmoke-services.site/"
+    }
   },
   {
     title: 'Wing Bank',

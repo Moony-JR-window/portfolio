@@ -2,6 +2,12 @@ import { Cake, GraduationCap, MapPin, Briefcase } from 'lucide-react'
 import { Reveal } from '@/components/reveal'
 import { education, experience, profile } from '@/lib/portfolio-data'
 
+
+type TimelineLink = {
+  label: string
+  url: string
+}
+
 function TimelineItem({
   title,
   period,
@@ -9,6 +15,7 @@ function TimelineItem({
   role,
   details,
   comingSoon,
+  link,
 }: {
   title: string
   period?: string
@@ -16,6 +23,7 @@ function TimelineItem({
   role?: string
   details: string[]
   comingSoon?: boolean
+  link?: TimelineLink
 }) {
   return (
     <li className="relative border-l border-border pl-6">
@@ -37,16 +45,32 @@ function TimelineItem({
           </span>
         </div>
       ) : (
-        details.length > 0 && (
-          <ul className="mt-2 space-y-2 text-sm leading-relaxed text-muted-foreground">
-            {details.map((d, i) => (
-              <li key={i} className="flex gap-2">
-                <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-primary" />
-                <span>{d}</span>
-              </li>
-            ))}
-          </ul>
-        )
+        <>
+          {details.length > 0 && (
+            <ul className="mt-2 space-y-2 text-sm leading-relaxed text-muted-foreground">
+              {details.map((d, i) => (
+                <li key={i} className="flex gap-2">
+                  <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-primary" />
+                  <span>{d}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {link && (
+            <p className="mt-4 text-sm">
+              <span className="text-muted-foreground">Featured: </span>
+              <a
+                href={link.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-primary hover:underline"
+              >
+                {link.label} →
+              </a>
+            </p>
+          )}
+        </>
       )}
     </li>
   )
@@ -133,6 +157,7 @@ export function ResumeSection() {
                     role={item.role}
                     details={item.details}
                     comingSoon={item.comingSoon}
+                    link={item.link}
                   />
                 ))}
               </ul>
