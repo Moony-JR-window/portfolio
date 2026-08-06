@@ -232,6 +232,29 @@
   }
 }
 
+/* Matrix rain scoped to the small terminal window (not full viewport) */
+.loader-matrix-char--window {
+  animation-name: matrix-fall-window;
+  top: -18px;
+  font-size: 12px;
+}
+@keyframes matrix-fall-window {
+  0% {
+    transform: translateY(-18px);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(340px);
+    opacity: 0;
+  }
+}
+
 /* Terminal blinking cursor */
 .loader-cursor {
   display: inline-block;

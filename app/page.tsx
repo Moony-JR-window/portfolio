@@ -7,12 +7,12 @@ import { SiteFooter } from '@/components/site-footer'
 import { ScrollToTop } from '@/components/scroll-to-top'
 import { VisitorCounter } from '@/components/visitor-counter'
 import ChatPopup from '@/components/ui/message/ChatPopup'
-import LoadingAnimation from '@/components/ui/animation/first'
+import TerminalOverlay from '@/components/ui/animation/first'
 
 export default function Page() {
   return (
     <>
-      <LoadingAnimation/>
+      <TerminalOverlay/>
       <SiteHeader />
       <main>
         <HeroSection />
