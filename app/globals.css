@@ -179,6 +179,126 @@
   }
 }
 
+/* ===== Loading Animation (Hacker Terminal Style) ===== */
+
+/* Overlay fade out */
+.loader-fade-out {
+  animation: loader-fade-out 0.5s ease forwards;
+}
+@keyframes loader-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* Terminal window pop-in */
+.loader-terminal-pop {
+  animation: loader-terminal-pop 0.4s ease-out both;
+}
+@keyframes loader-terminal-pop {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Matrix rain characters */
+.loader-matrix-char {
+  position: absolute;
+  top: -20px;
+  font-family: monospace;
+  font-size: 14px;
+  color: #22c55e;
+  text-shadow: 0 0 8px rgba(34, 197, 94, 0.8);
+  animation: matrix-fall linear infinite;
+}
+@keyframes matrix-fall {
+  0% {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(100vh);
+    opacity: 0;
+  }
+}
+
+/* Terminal blinking cursor */
+.loader-cursor {
+  display: inline-block;
+  margin-left: 2px;
+  color: #22c55e;
+  animation: loader-cursor-blink 0.8s step-end infinite;
+}
+@keyframes loader-cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* Progress bar glow */
+.loader-progress-glow {
+  box-shadow: 0 0 10px rgba(34, 197, 94, 0.6), 0 0 20px rgba(34, 197, 94, 0.3);
+  transition: width 0.1s linear;
+}
+
+/* Glitch text effect for the M logo */
+.loader-glitch {
+  position: relative;
+  display: inline-block;
+  animation: loader-glitch-skew 3s infinite;
+}
+.loader-glitch::before,
+.loader-glitch::after {
+  content: attr(data-text);
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.8;
+}
+.loader-glitch::before {
+  color: #f0f;
+  z-index: -1;
+  animation: loader-glitch-1 2.5s infinite linear alternate-reverse;
+}
+.loader-glitch::after {
+  color: #0ff;
+  z-index: -2;
+  animation: loader-glitch-2 3s infinite linear alternate-reverse;
+}
+@keyframes loader-glitch-1 {
+  0% { transform: translate(0); }
+  20% { transform: translate(-3px, 2px); }
+  40% { transform: translate(3px, -1px); }
+  60% { transform: translate(-2px, 3px); }
+  80% { transform: translate(2px, 1px); }
+  100% { transform: translate(0); }
+}
+@keyframes loader-glitch-2 {
+  0% { transform: translate(0); }
+  25% { transform: translate(3px, -2px); }
+  50% { transform: translate(-3px, 1px); }
+  75% { transform: translate(2px, -3px); }
+  100% { transform: translate(0); }
+}
+@keyframes loader-glitch-skew {
+  0%, 100% { transform: skewX(0deg); }
+  92% { transform: skewX(0deg); }
+  93% { transform: skewX(3deg); }
+  94% { transform: skewX(-3deg); }
+  95% { transform: skewX(0deg); }
+}
+
 /* Typing caret */
 .typed-caret {
   display: inline-block;

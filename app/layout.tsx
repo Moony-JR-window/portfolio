@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import { Poppins, Raleway } from 'next/font/google'
+import Script from 'next/script'
 import './globals.css'
 
 const poppins = Poppins({
@@ -59,10 +60,12 @@ export default function RootLayout({
       className={`${poppins.variable} ${raleway.variable} bg-background`}
       suppressHydrationWarning
     >
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
-      </head>
       <body className="antialiased">
+        <Script
+          id="theme-script"
+          strategy="beforeInteractive"
+          dangerouslySetInnerHTML={{ __html: themeScript }}
+        />
         {children}
         {process.env.NODE_ENV === 'production' && ''}
       </body>
