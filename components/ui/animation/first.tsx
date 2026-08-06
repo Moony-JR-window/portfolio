@@ -1460,7 +1460,8 @@ export default function TerminalOverlay() {
               autoComplete="off"
               autoCapitalize="off"
               aria-label="Terminal input"
-              className="bg-transparent outline-none border-none text-green-300 flex-1 text-[13px] font-mono"
+              // 16px on mobile prevents iOS Safari auto-zoom on focus; 13px on larger screens.
+              className="bg-transparent outline-none border-none text-green-300 flex-1 text-[16px] sm:text-[13px] font-mono"
               style={{ caretColor: '#22c55e', minWidth: 0 }}
             />
             <span className="loader-cursor shrink-0">▊</span>
