@@ -8,6 +8,7 @@ import { useDraggable } from '@/lib/terminal/drag';
 import type { HistoryEntry, NetworkInfo, Position } from '@/lib/terminal/types';
 import { HOME, FILE_SYSTEM, resolvePath, getNode } from '@/lib/terminal/file-system';
 import { COMMANDS, executeCommand } from '@/lib/terminal/commands';
+import { isRealShellAvailable, runRealCommand } from '@/lib/terminal/real-shell';
 
 const DEFAULT_BOOT_LINES = [
   '> initializing secure shell...',
@@ -36,6 +37,16 @@ const INITIAL_POS: Position =
     ? { x: Math.max(8, window.innerWidth - 560), y: 90 }
     : { x: 400, y: 90 };
 
+/** Shorten a real path like bash: /Users/mony.rorn → ~ */
+function shortenPath(path: string): string {
+  if (!path) return '~';
+  const homeMatch = path.match(/^\/Users\/[^/]+/);
+  if (homeMatch) {
+    return path.replace(homeMatch[0], '~');
+  }
+  return path;
+}
+
 export default function TerminalOverlay() {
   const [isVisible, setIsVisible] = useState(true);
   const [booted, setBooted] = useState(false);
@@ -46,6 +57,8 @@ export default function TerminalOverlay() {
   const [cwd, setCwd] = useState(HOME);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [draft, setDraft] = useState('');
+  const [realShell, setRealShell] = useState(false);
+  const [realCwd, setRealCwd] = useState('~');
 
   const bootLinesRef = useRef<string[]>(DEFAULT_BOOT_LINES);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -58,44 +71,59 @@ export default function TerminalOverlay() {
 
   const { pos, elRef, startDrag } = useDraggable(INITIAL_POS);
 
-  const promptText = `moony@dev:${cwd.replace(/^\/home\/moony/, '~')}`;
+  const promptText = realShell
+    ? `moony@dev:${shortenPath(realCwd)}`
+    : `moony@dev:${cwd.replace(/^\/home\/moony/, '~')}`;
 
   function pushOutput(text: string, className = 'text-green-500/70') {
     setHistory((h) => [...h, { type: 'output', text, className }]);
   }
 
-  // Boot animation: fetch network info, type boot lines, then enable input.
+  // Boot animation: detect real shell, fetch network info, type boot lines.
   useEffect(() => {
     let isMounted = true;
     let lineTimer: ReturnType<typeof setInterval> | null = null;
     let bootTimer: ReturnType<typeof setTimeout> | null = null;
 
-    async function fetchNetworkInfo() {
+    async function init() {
+      // Detect if real shell is available (local dev mode only)
+      const real = await isRealShellAvailable();
+      if (!isMounted) return;
+      setRealShell(real);
+
+      if (real) {
+        // Get real cwd
+        const cwdOut = await runRealCommand('pwd');
+        if (isMounted && cwdOut.cwd) setRealCwd(cwdOut.cwd);
+      }
+
       try {
         const res = await fetch('/api/network');
         const data: NetworkInfo = await res.json();
         if (!isMounted) return;
-        bootLinesRef.current = [
-          '> initializing secure shell...',
-          '> connecting to mainframe...',
-          '> handshake complete [OK]',
-          '',
-          '> decrypting payload...',
-          '> bypassing firewall... [OK]',
-          '> injecting exploit... [OK]',
-          '',
-          '> loading kernel modules...',
-          '> mounting /dev/portfolio...',
-          '> starting daemon: moonyd [OK]',
-          '',
-          '> establishing uplink...',
-          `> target: ${data.domain}`,
-          `> uplink: ${data.ip}`,
-          '',
-          '> access granted.',
-          '> WELCOME TO MOONYDEV PORTFOLIO',
-          '> type "help" to list available commands.',
-        ];
+        bootLinesRef.current = real
+          ? [
+              '> initializing secure shell...',
+              '> connecting to mainframe...',
+              '> handshake complete [OK]',
+              '',
+              '> decrypting payload...',
+              '> bypassing firewall... [OK]',
+              '> injecting exploit... [OK]',
+              '',
+              '> loading kernel modules...',
+              '> mounting /dev/portfolio...',
+              '> starting daemon: moonyd [OK]',
+              '',
+              '> establishing uplink...',
+              `> target: ${data.domain}`,
+              `> uplink: ${data.ip}`,
+              '',
+              '> REAL SHELL ACTIVE — commands run on this machine.',
+              '> WELCOME TO MOONYDEV PORTFOLIO',
+              '> type "help" to list available commands.',
+            ]
+          : DEFAULT_BOOT_LINES;
       } catch {
         if (!isMounted) return;
         bootLinesRef.current = DEFAULT_BOOT_LINES;
@@ -118,7 +146,7 @@ export default function TerminalOverlay() {
       }, bootLinesRef.current.length * 60 + 500);
     }
 
-    fetchNetworkInfo();
+    init();
 
     return () => {
       isMounted = false;
@@ -168,14 +196,14 @@ export default function TerminalOverlay() {
   // Auto-scroll to bottom when content changes.
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-  }, [history, visibleLines, booted, cwd]);
+  }, [history, visibleLines, booted, cwd, realCwd]);
 
   function handleStartDrag(clientX: number, clientY: number) {
     dismissedRef.current = true;
     startDrag(clientX, clientY);
   }
 
-  function runCommand(raw: string) {
+  async function runCommand(raw: string) {
     const trimmed = raw.trim();
     const [cmd = '', ...args] = trimmed.split(/\s+/);
     const lower = cmd.toLowerCase();
@@ -203,6 +231,38 @@ export default function TerminalOverlay() {
     ]);
 
     if (!trimmed) return;
+
+    // ============ REAL SHELL MODE (local dev only) ============
+    if (realShell) {
+      // cd — server handles it and returns the new cwd
+      if (lower === 'cd') {
+        const target = args[0] || '~';
+        const out = await runRealCommand(`cd ${target}`);
+        if (out.cwd) setRealCwd(out.cwd);
+        if (out.output) pushOutput(out.output, 'text-red-400');
+        return;
+      }
+
+      // Special: help still shows the simulated help (works everywhere)
+      if (lower === 'help' || lower === 'man') {
+        const output = executeCommand(lower, args, cwd, fsRef.current, historyStackRef.current);
+        if (output.length) setHistory((h) => [...h, ...output]);
+        return;
+      }
+
+      // Everything else runs on the real machine
+      const result = await runRealCommand(trimmed);
+      // Keep prompt cwd in sync with the server
+      if (result.cwd) setRealCwd(result.cwd);
+      if (result.output) {
+        result.output.split('\n').forEach((line) => {
+          pushOutput(line, 'text-green-300');
+        });
+      }
+      return;
+    }
+
+    // ============ SIMULATED MODE (deployed / fallback) ============
 
     // cd — special: mutates cwd.
     if (lower === 'cd') {
@@ -255,7 +315,7 @@ export default function TerminalOverlay() {
     if (output.length) setHistory((h) => [...h, ...output]);
   }
 
-  function handleTab(e: KeyboardEvent<HTMLInputElement>) {
+  async function handleTab(e: KeyboardEvent<HTMLInputElement>) {
     e.preventDefault();
     const parts = draft.split(' ');
     if (parts.length === 1 && !draft.includes('/')) {
@@ -267,7 +327,38 @@ export default function TerminalOverlay() {
       }
       return;
     }
-    // Path completion.
+
+    // ============ REAL SHELL TAB COMPLETION ============
+    if (realShell) {
+      const last = parts[parts.length - 1];
+      const slashIdx = last.lastIndexOf('/');
+      const targetDir = slashIdx >= 0 ? last.slice(0, slashIdx) || '.' : '.';
+      const prefix = slashIdx >= 0 ? last.slice(slashIdx + 1) : last;
+
+      // List the target directory on the real machine
+      const result = await runRealCommand(`ls -1 ${targetDir} 2>/dev/null`);
+      if (!result.output) return;
+      const names = result.output
+        .split('\n')
+        .map((n) => n.trim())
+        .filter(Boolean)
+        .filter((n) => n.startsWith(prefix));
+
+      if (names.length === 1) {
+        // Check if it's a directory to add trailing slash
+        const check = await runRealCommand(`test -d "${targetDir}/${names[0]}" && echo DIR`);
+        const sep = check.output.includes('DIR') ? '/' : ' ';
+        parts[parts.length - 1] =
+          targetDir === '.' ? `${names[0]}${sep}` : `${targetDir}/${names[0]}${sep}`;
+        setDraft(parts.join(' '));
+      } else if (names.length > 1) {
+        const base = targetDir === '.' ? '' : `${targetDir}/`;
+        pushOutput(names.map((n) => `${base}${n}`).join('   '), 'text-green-500/70');
+      }
+      return;
+    }
+
+    // ============ SIMULATED PATH COMPLETION ============
     const last = parts[parts.length - 1];
     const slashIdx = last.lastIndexOf('/');
     const targetDir = slashIdx >= 0 ? last.slice(0, slashIdx) || '.' : '.';
@@ -382,7 +473,7 @@ export default function TerminalOverlay() {
         <span className="w-3 h-3 rounded-full bg-yellow-500/80" />
         <span className="w-3 h-3 rounded-full bg-green-500/80" />
         <span className="ml-2 text-xs text-green-500/60 font-mono truncate">
-          moony@dev: ~/portfolio
+          moony@dev: {realShell ? realCwd : '~/portfolio'}
         </span>
       </div>
     );

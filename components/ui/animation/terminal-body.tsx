@@ -6,10 +6,10 @@ import type { HistoryEntry } from '@/lib/terminal/types';
 export const MATRIX_CHARS = 'アイウエオカキクケコサシスセソタチツテトナニヌネノ01';
 
 const BOOT_LINE_CLASS = (line: string) => {
-  if (line.startsWith('$')) return 'text-green-400';
-  if (line.startsWith('✓')) return 'text-emerald-400';
-  if (line.startsWith('○')) return 'text-green-600';
-  if (line.startsWith('WELCOME')) return 'text-green-300 font-bold';
+  if (line.startsWith('>')) return 'text-green-400';
+  if (line.includes('[OK]')) return 'text-emerald-400';
+  if (line.includes('REAL SHELL ACTIVE')) return 'text-yellow-400 font-bold';
+  if (line.includes('WELCOME')) return 'text-green-300 font-bold';
   return 'text-green-500/70';
 };
 
@@ -100,19 +100,21 @@ export default function TerminalBody({
       {booted && (
         <div className="flex items-center gap-2 mt-0.5">
           <span className="text-green-400 shrink-0 whitespace-nowrap">{promptText}$</span>
-          <input
-            ref={inputRef}
-            value={draft}
-            onChange={(e) => onInputChange(e.target.value)}
-            onKeyDown={onKeyDown}
-            spellCheck={false}
-            autoComplete="off"
-            autoCapitalize="off"
-            aria-label="Terminal input"
-            // 16px on mobile prevents iOS Safari auto-zoom on focus; 13px on larger screens.
-            className="bg-transparent outline-none border-none text-green-300 flex-1 text-[16px] sm:text-[13px] font-mono"
-            style={{ caretColor: '#22c55e', minWidth: 0 }}
-          />
+          <div className="flex-1 overflow-x-auto overflow-y-hidden" style={{ minWidth: 0 }}>
+            <input
+              ref={inputRef}
+              value={draft}
+              onChange={(e) => onInputChange(e.target.value)}
+              onKeyDown={onKeyDown}
+              spellCheck={false}
+              autoComplete="off"
+              autoCapitalize="off"
+              aria-label="Terminal input"
+              // 16px on mobile prevents iOS Safari auto-zoom on focus; 13px on larger screens.
+              className="bg-transparent outline-none border-none text-green-300 w-full text-[16px] sm:text-[13px] font-mono whitespace-nowrap"
+              style={{ caretColor: '#22c55e', minWidth: 0 }}
+            />
+          </div>
           <span className="loader-cursor shrink-0">▊</span>
         </div>
       )}
