@@ -362,6 +362,12 @@ export default function TerminalOverlay() {
 
     const output = executeCommand(lower, args, cwd, fsRef.current, historyStackRef.current);
     if (output.length) setHistory((h) => [...h, ...output]);
+
+    // Red warning so visitors know commands are simulated, not real.
+    pushOutput(
+      '⚠ demo sandbox — no real permissions. Run locally for a live shell.',
+      'text-red-500/90',
+    );
   }
 
   async function handleTab(e: KeyboardEvent<HTMLInputElement>) {
