@@ -83,7 +83,7 @@ export default function TerminalOverlay() {
 
   const promptText = realShell
     ? `moony@dev:${shellMode === 'docker' ? 'docker' : 'mac'}${shortenPath(realCwd)}`
-    : `moony@dev:${cwd.replace(/^\/home\/moony/, '~')}`;
+    : `demo@moonydev:${cwd.replace(/^\/home\/moony/, '~')}`;
 
   function pushOutput(text: string, className = 'text-green-500/70') {
     setHistory((h) => [...h, { type: 'output', text, className }]);
@@ -522,7 +522,7 @@ export default function TerminalOverlay() {
         <span className="w-3 h-3 rounded-full bg-yellow-500/80" />
         <span className="w-3 h-3 rounded-full bg-green-500/80" />
         <span className="ml-2 text-xs text-green-500/60 font-mono truncate">
-          moony@dev: {realShell ? realCwd : '~/portfolio'}
+          {realShell ? `moony@dev: ${realCwd}` : 'demo@moonydev: ~ (simulated)'}
         </span>
       </div>
     );
