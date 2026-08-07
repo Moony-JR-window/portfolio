@@ -21,6 +21,7 @@ interface TerminalBodyProps {
   promptText: string;
   draft: string;
   bootLines: string[];
+  realShell: boolean;
   scrollRef: RefObject<HTMLDivElement | null>;
   inputRef: RefObject<HTMLInputElement | null>;
   onInputChange: (value: string) => void;
@@ -37,6 +38,7 @@ export default function TerminalBody({
   promptText,
   draft,
   bootLines,
+  realShell,
   scrollRef,
   inputRef,
   onInputChange,
@@ -79,6 +81,21 @@ export default function TerminalBody({
           </span>
         ))}
       </div>
+
+      {/* Mode indicator */}
+      {booted && !cleared && (
+        <div
+          className={
+            realShell
+              ? 'text-yellow-400/90 text-[11px] mb-1'
+              : 'text-orange-400/90 text-[11px] mb-1'
+          }
+        >
+          {realShell
+            ? '● REAL SHELL — commands execute on this machine'
+            : '● SIMULATED MODE — demo terminal, commands do not run'}
+        </div>
+      )}
 
       {/* Boot lines with typewriter effect */}
       {!cleared &&

@@ -123,7 +123,28 @@ export default function TerminalOverlay() {
               '> WELCOME TO MOONYDEV PORTFOLIO',
               '> type "help" to list available commands.',
             ]
-          : DEFAULT_BOOT_LINES;
+          : [
+              '> initializing secure shell...',
+              '> connecting to mainframe...',
+              '> handshake complete [OK]',
+              '',
+              '> decrypting payload...',
+              '> bypassing firewall... [OK]',
+              '> injecting exploit... [OK]',
+              '',
+              '> loading kernel modules...',
+              '> mounting /dev/portfolio...',
+              '> starting daemon: moonyd [OK]',
+              '',
+              '> establishing uplink...',
+              `> target: ${data.domain}`,
+              `> uplink: ${data.ip}`,
+              '',
+              '> ⚠ SIMULATED MODE — commands do NOT run on a real machine.',
+              '>   This is a demo terminal. Type "help" to explore.',
+              '> WELCOME TO MOONYDEV PORTFOLIO',
+              '> type "help" to list available commands.',
+            ];
       } catch {
         if (!isMounted) return;
         bootLinesRef.current = DEFAULT_BOOT_LINES;
@@ -525,6 +546,7 @@ export default function TerminalOverlay() {
         promptText={promptText}
         draft={draft}
         bootLines={bootLinesRef.current}
+        realShell={realShell}
         scrollRef={scrollRef}
         inputRef={inputRef}
         onInputChange={(value) => {
