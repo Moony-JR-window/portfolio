@@ -2,6 +2,7 @@
 
 import { useRef, type KeyboardEvent, type RefObject } from 'react';
 import type { HistoryEntry } from '@/lib/terminal/types';
+import type { ShellMode } from '@/lib/terminal/real-shell';
 
 export const MATRIX_CHARS = 'アイウエオカキクケコサシスセソタチツテトナニヌネノ01';
 
@@ -22,6 +23,7 @@ interface TerminalBodyProps {
   draft: string;
   bootLines: string[];
   realShell: boolean;
+  shellMode: ShellMode;
   scrollRef: RefObject<HTMLDivElement | null>;
   inputRef: RefObject<HTMLInputElement | null>;
   onInputChange: (value: string) => void;
@@ -39,6 +41,7 @@ export default function TerminalBody({
   draft,
   bootLines,
   realShell,
+  shellMode,
   scrollRef,
   inputRef,
   onInputChange,
@@ -87,12 +90,16 @@ export default function TerminalBody({
         <div
           className={
             realShell
-              ? 'text-yellow-400/90 text-[11px] mb-1'
+              ? shellMode === 'docker'
+                ? 'text-cyan-400/90 text-[11px] mb-1'
+                : 'text-yellow-400/90 text-[11px] mb-1'
               : 'text-orange-400/90 text-[11px] mb-1'
           }
         >
           {realShell
-            ? '● REAL SHELL — commands execute on this machine'
+            ? shellMode === 'docker'
+              ? '● DOCKER (LINUX) — commands run in Ubuntu container'
+              : '● REAL SHELL — commands execute on this machine'
             : '● SIMULATED MODE — demo terminal, commands do not run'}
         </div>
       )}

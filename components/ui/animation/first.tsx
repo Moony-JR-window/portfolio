@@ -8,7 +8,12 @@ import { useDraggable } from '@/lib/terminal/drag';
 import type { HistoryEntry, NetworkInfo, Position } from '@/lib/terminal/types';
 import { HOME, FILE_SYSTEM, resolvePath, getNode } from '@/lib/terminal/file-system';
 import { COMMANDS, executeCommand } from '@/lib/terminal/commands';
-import { isRealShellAvailable, runRealCommand } from '@/lib/terminal/real-shell';
+import {
+  isRealShellAvailable,
+  runRealCommand,
+  setShellMode,
+  type ShellMode,
+} from '@/lib/terminal/real-shell';
 
 const DEFAULT_BOOT_LINES = [
   '> initializing secure shell...',
@@ -59,6 +64,11 @@ export default function TerminalOverlay() {
   const [draft, setDraft] = useState('');
   const [realShell, setRealShell] = useState(false);
   const [realCwd, setRealCwd] = useState('~');
+  const [shellMode, setShellModeState] = useState<ShellMode>('local');
+
+  function applyShellMode(data: { mode?: ShellMode }) {
+    if (data.mode) setShellModeState(data.mode);
+  }
 
   const bootLinesRef = useRef<string[]>(DEFAULT_BOOT_LINES);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -72,7 +82,7 @@ export default function TerminalOverlay() {
   const { pos, elRef, startDrag } = useDraggable(INITIAL_POS);
 
   const promptText = realShell
-    ? `moony@dev:${shortenPath(realCwd)}`
+    ? `moony@dev:${shellMode === 'docker' ? 'docker' : 'mac'}${shortenPath(realCwd)}`
     : `moony@dev:${cwd.replace(/^\/home\/moony/, '~')}`;
 
   function pushOutput(text: string, className = 'text-green-500/70') {
@@ -255,6 +265,23 @@ export default function TerminalOverlay() {
 
     // ============ REAL SHELL MODE (local dev only) ============
     if (realShell) {
+      // Mode-switch commands (~mode, ~docker on/off)
+      if (
+        trimmed === '~mode' ||
+        trimmed === '~docker on' ||
+        trimmed === '~docker off'
+      ) {
+        const out = await setShellMode(trimmed);
+        applyShellMode(out);
+        if (out.cwd) setRealCwd(out.cwd);
+        if (out.output) {
+          out.output.split('\n').forEach((line) => {
+            pushOutput(line, 'text-green-300');
+          });
+        }
+        return;
+      }
+
       // cd — server handles it and returns the new cwd
       if (lower === 'cd') {
         const target = args[0] || '~';
@@ -273,7 +300,8 @@ export default function TerminalOverlay() {
 
       // Everything else runs on the real machine
       const result = await runRealCommand(trimmed);
-      // Keep prompt cwd in sync with the server
+      // Keep prompt cwd + mode in sync with the server
+      applyShellMode(result);
       if (result.cwd) setRealCwd(result.cwd);
       if (result.output) {
         result.output.split('\n').forEach((line) => {
@@ -547,6 +575,7 @@ export default function TerminalOverlay() {
         draft={draft}
         bootLines={bootLinesRef.current}
         realShell={realShell}
+        shellMode={shellMode}
         scrollRef={scrollRef}
         inputRef={inputRef}
         onInputChange={(value) => {
