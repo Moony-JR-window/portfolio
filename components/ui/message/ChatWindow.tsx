@@ -120,27 +120,40 @@ export default function ChatWindow({
     setUploadingName(file.name);
     try {
       const postId = `m-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
       const form = new FormData();
       form.append("file", file);
 
-      const res = await fetch(`https://moony-lovat.vercel.app/api/upload-any/${postId}`, {
+      const res = await fetch(`/api/upload-any/1`, {
         method: "POST",
         body: form,
       });
-      if (!res.ok) throw new Error("Upload failed");
 
-      await res.json();
+      console.log("Upload response:", res.status, res.statusText);
+
+      if (!res.ok) {
+        const text = await res.text();
+        console.error("Upload failed:", text);
+        throw new Error(`Upload failed: ${res.status}`);
+      }
+
+      const data = await res.json();
+      console.log("Upload result:", data);
+
       onSend(`📎 ${file.name}`, {
         postId,
         fileName: file.name,
         mimeType: file.type || "application/octet-stream",
         size: file.size,
       });
+
       setDraft("");
       onTyping(false);
+
     } catch (err) {
-      console.error(err);
+      console.error("Upload error:", err);
       showNotice("error", "Upload failed. Please try again.");
+
     } finally {
       setUploading(false);
       setUploadingName(null);
