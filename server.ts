@@ -17,7 +17,7 @@ const PORT = Number(process.env.WS_PORT || 3001);
 // ---------------------------------------------------------------------------
 // File upload / download configuration
 // ---------------------------------------------------------------------------
-const UPLOADS_DIR = path.join(process.cwd(), "uploads");
+const UPLOADS_DIR = path.join(process.cwd(), "/tmp/uploads");
 const ALLOWED_EXTENSIONS = new Set([
   ".xlsx",
   ".xls",
