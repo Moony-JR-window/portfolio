@@ -17,7 +17,13 @@ const PORT = Number(process.env.WS_PORT || 3001);
 // ---------------------------------------------------------------------------
 // File upload / download configuration
 // ---------------------------------------------------------------------------
-const UPLOADS_DIR = path.join(process.cwd(), "/tmp/uploads");
+
+const UPLOADS_DIR =
+  process.env.VERCEL
+    ? path.join("/tmp", "uploads")
+    : path.join(process.cwd(), "tmp", "uploads");
+
+
 const ALLOWED_EXTENSIONS = new Set([
   ".xlsx",
   ".xls",
@@ -133,7 +139,7 @@ function parseMultipartFile(
   if (!contentType || !contentType.startsWith("multipart/form-data")) {
     throw new Error("Request must be multipart/form-data");
   }
-
+  
   const boundaryMatch = contentType.match(
     /boundary=(?:"([^"]+)"|([^;]+))/i
   );
@@ -224,7 +230,7 @@ async function handleUpload(
       body,
       opts.maxSize
     );
-
+    
     const ext = path.extname(file.filename).toLowerCase();
     if (opts.allowedExtensions && !opts.allowedExtensions.has(ext)) {
       sendJson(res, 400, {
@@ -235,6 +241,7 @@ async function handleUpload(
 
     const dir = path.join(UPLOADS_DIR, postId);
     await fs.mkdir(dir, { recursive: true });
+    
 
     // Single file per post: delete any existing file + metadata first.
     const existing = await fs.readdir(dir);
