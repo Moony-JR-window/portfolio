@@ -84,6 +84,16 @@ function clientIp(req: http.IncomingMessage): string {
   return req.socket.remoteAddress ?? "";
 }
 
+// Derive the public base URL from the request so the Swagger "servers" entry
+// matches whatever host the API is deployed on (local, Netlify, Vercel, ...).
+function baseUrl(req: http.IncomingMessage): string {
+  const proto = req.headers["x-forwarded-proto"];
+  const scheme =
+    typeof proto === "string" && proto.startsWith("https") ? "https" : "http";
+  const host = req.headers.host ?? `localhost:${PORT}`;
+  return `${scheme}://${host}`;
+}
+
 // ---------------------------------------------------------------------------
 // HTTP helpers
 // ---------------------------------------------------------------------------
@@ -436,7 +446,6 @@ const swaggerSpec: Record<string, unknown> = {
       "Store a single file per post. Re-uploading to the same post deletes the previous file first. " +
       "All endpoints are rate limited per client IP to 30 requests per 30 seconds (HTTP 429 when exceeded).",
   },
-  SERVERS_URL: true,
   paths: {
     "/api/upload/{postId}": {
       post: {
@@ -617,6 +626,10 @@ const swaggerSpec: Record<string, unknown> = {
   },
 };
 
+function buildSwaggerSpec(serverBase: string): Record<string, unknown> {
+  return { ...swaggerSpec, servers: [{ url: serverBase }] };
+}
+
 const docsHtml = `<!DOCTYPE html>
 <html lang="en">
   <head>
@@ -664,7 +677,7 @@ const server = http.createServer((req, res) => {
 
   // Swagger / OpenAPI docs
   if (req.method === "GET" && url.pathname === "/swagger.json") {
-    sendJson(res, 200, swaggerSpec);
+    sendJson(res, 200, buildSwaggerSpec(baseUrl(req)));
     return;
   }
   if (req.method === "GET" && url.pathname === "/docs" || req.method === "GET" && url.pathname === "/") {
@@ -786,6 +799,7 @@ wss.on("connection", (ws, req) => {
         text: event.text,
         timestamp: Date.now(),
         seenBy: [id],
+        ...(event.file ? { file: event.file } : {}),
       };
 
       chatStore.addMessage(message);

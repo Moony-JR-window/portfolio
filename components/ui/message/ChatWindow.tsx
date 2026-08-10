@@ -4,18 +4,20 @@ import { useEffect, useRef, useState } from "react";
 
 import MessageBubble from "./MessageBubble";
 import OnlineBadge from "./OnlineBadge";
-import { Visitor, ChatMessage } from "@/types/chat";
+import { Visitor, ChatMessage, FileAttachment } from "@/types/chat";
 import BotCommandMenu from "./BotCommandMenu";
-
+// import { API_BASE } from "@/lib/websocket";
 interface Props {
   you: Visitor | null;
   visitors: Visitor[];
   messages: ChatMessage[];
   onlineCount: number;
   typingUsers: { visitorId: string; nickname: string }[];
-  onSend: (text: string) => void;
+  onSend: (text: string, file?: FileAttachment) => void;
   onTyping: (isTyping: boolean) => void;
   onNicknameChange: (nickname: string) => void;
+  steamEnabled: boolean;
+  onSteam: () => void;
   onClose: () => void;
   onMinimize: () => void;
 }
@@ -29,6 +31,8 @@ export default function ChatWindow({
   onSend,
   onTyping,
   onNicknameChange,
+  steamEnabled,
+  onSteam,
   onClose,
   onMinimize,
 }: Props) {
@@ -45,6 +49,18 @@ export default function ChatWindow({
   const elRef = useRef<HTMLDivElement>(null)
   const [showCommands, setShowCommands] = useState(false);
   const [showBotMenu, setShowBotMenu] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadingName, setUploadingName] = useState<string | null>(null);
+  const [steamNotice, setSteamNotice] = useState(false);
+  const [notice, setNotice] = useState<{ type: "error" | "info"; text: string } | null>(null);
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function showNotice(type: "error" | "info", text: string, duration = 4000) {
+    setNotice({ type, text });
+    if (noticeTimer.current) clearTimeout(noticeTimer.current);
+    noticeTimer.current = setTimeout(() => setNotice(null), duration);
+  }
 
 
 
@@ -76,12 +92,65 @@ export default function ChatWindow({
     const text = draft.trim();
     if (!text) return;
 
-    // Prevent sending slash commands
-    if (text.startsWith("/")) return;
+    // Slash commands: handle /steam locally, ignore the rest
+    if (text.startsWith("/")) {
+      if (text.trim().toLowerCase() === "/steam") {
+        onSteam();
+        setDraft("");
+        onTyping(false);
+        setShowCommands(false);
+        setSteamNotice(true);
+        setTimeout(() => setSteamNotice(false), 4000);
+      }
+      return;
+    }
 
     onSend(text);
     setDraft("");
     onTyping(false);
+  }
+
+  async function uploadFile(file: File) {
+    if (!steamEnabled) {
+      showNotice("info", 'Run "/steam" to enable file upload');
+      return;
+    }
+
+    setUploading(true);
+    setUploadingName(file.name);
+    try {
+      const postId = `m-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      const form = new FormData();
+      form.append("file", file);
+
+      const res = await fetch(`https://moony-lovat.vercel.app/api/upload-any/${postId}`, {
+        method: "POST",
+        body: form,
+      });
+      if (!res.ok) throw new Error("Upload failed");
+
+      await res.json();
+      onSend(`📎 ${file.name}`, {
+        postId,
+        fileName: file.name,
+        mimeType: file.type || "application/octet-stream",
+        size: file.size,
+      });
+      setDraft("");
+      onTyping(false);
+    } catch (err) {
+      console.error(err);
+      showNotice("error", "Upload failed. Please try again.");
+    } finally {
+      setUploading(false);
+      setUploadingName(null);
+    }
+  }
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (file) await uploadFile(file);
   }
 
   function submitNickname() {
@@ -165,6 +234,7 @@ export default function ChatWindow({
           "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
       }}
     >
+      <style>{`@keyframes chat-spin { to { transform: rotate(360deg); } }`}</style>
       {/* Header */}
       <div
         onMouseDown={(e) => startDrag(e.clientX, e.clientY)}
@@ -288,6 +358,14 @@ export default function ChatWindow({
           {/* Messages */}
           <div
             ref={scrollRef}
+            onDragOver={(e) => {
+              e.preventDefault();
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              const file = e.dataTransfer.files?.[0];
+              if (file) void uploadFile(file);
+            }}
             style={{
               flex: 1,
               overflowY: "auto",
@@ -299,6 +377,8 @@ export default function ChatWindow({
                 key={m.id}
                 message={m}
                 isOwn={m.senderId === you?.id}
+                steamEnabled={steamEnabled}
+                onNotify={(msg) => showNotice("error", msg)}
                 seenLabel={
                   m.senderId === you?.id && m.seenBy.length > 1 ? "Seen" : undefined
                 }
@@ -310,7 +390,67 @@ export default function ChatWindow({
                 {typingUsers.length === 1 ? "is" : "are"} typing...
               </div>
             )}
+
+            {uploadingName && (
+              <div style={{ display: "flex", justifyContent: "flex-end", margin: "6px 0" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    background: "#eaf3ff",
+                    color: "#0084ff",
+                    borderRadius: 16,
+                    padding: "8px 12px",
+                    fontSize: 13,
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 14,
+                      height: 14,
+                      borderRadius: "50%",
+                      border: "2px solid currentColor",
+                      borderTopColor: "transparent",
+                      animation: "chat-spin 0.8s linear infinite",
+                    }}
+                  />
+                  Uploading {uploadingName}…
+                </div>
+              </div>
+            )}
           </div>
+
+          {notice && (
+            <div
+              style={{
+                textAlign: "center",
+                fontSize: 12,
+                padding: "6px 12px",
+                borderTop: "1px solid #eee",
+                background: notice.type === "error" ? "#ffecec" : "#eaf3ff",
+                color: notice.type === "error" ? "#d93025" : "#0084ff",
+              }}
+            >
+              {notice.type === "error" ? "⚠️ " : "ℹ️ "}
+              {notice.text}
+            </div>
+          )}
+
+          {steamNotice && (
+            <div
+              style={{
+                textAlign: "center",
+                fontSize: 12,
+                color: "#0084ff",
+                background: "#e8f4ff",
+                padding: "6px 12px",
+                borderTop: "1px solid #d2e7ff",
+              }}
+            >
+              ✅ Steam enabled — file upload is now available
+            </div>
+          )}
 
           {/* Input */}
           <div
@@ -333,6 +473,25 @@ export default function ChatWindow({
               }}
               onCloseBot={() => setShowBotMenu(false)}
             />
+
+            {steamEnabled ? (
+              <>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  hidden
+                  onChange={handleFileChange}
+                />
+                <button
+                  title="Attach file"
+                  disabled={uploading}
+                  onClick={() => fileInputRef.current?.click()}
+                  style={{ ...iconBtnStyle, fontSize: 18, color: "#0084ff", padding: 4 }}
+                >
+                  {uploading ? "⏳" : "📎"}
+                </button>
+              </>
+            ) : null}
 
             <input
               value={draft}

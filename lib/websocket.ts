@@ -1,5 +1,11 @@
 import type { ClientToServerEvent, ServerToClientEvent } from "../types/chat";
 
+// Base URL used for the file upload / download API. Defaults to the current
+// origin (same host that serves the WebSocket), overridable via env.
+export const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE ??
+  (typeof window !== "undefined" ? window.location.origin : "");
+
 type Listener = (event: ServerToClientEvent) => void;
 
 export class ChatSocket {

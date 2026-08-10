@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { ChatSocket } from "../lib/websocket";
-import type { Visitor, ChatMessage, ServerToClientEvent } from "../types/chat";
+import type { Visitor, ChatMessage, ServerToClientEvent, FileAttachment } from "../types/chat";
 
 interface TypingState {
   visitorId: string;
@@ -23,6 +23,7 @@ export function useChat() {
   const [connected, setConnected] = useState(false);
   const [latestNotification, setLatestNotification] =
     useState<ChatMessage | null>(null);
+  const [steamEnabled, setSteamEnabled] = useState(false);
 
   useEffect(() => {
     const socket = new ChatSocket();
@@ -108,8 +109,16 @@ export function useChat() {
     };
   }, []);
 
-  const sendMessage = useCallback((text: string) => {
-    socketRef.current?.send({ type: "message", text });
+  const sendMessage = useCallback((text: string, file?: FileAttachment) => {
+    socketRef.current?.send({
+      type: "message",
+      text,
+      ...(file ? { file } : {}),
+    });
+  }, []);
+
+  const enableSteam = useCallback(() => {
+    setSteamEnabled(true);
   }, []);
 
   const setTyping = useCallback((isTyping: boolean) => {
@@ -136,10 +145,12 @@ export function useChat() {
     typingUsers,
     connected,
     latestNotification,
+    steamEnabled,
     sendMessage,
     setTyping,
     setNickname,
     markSeen,
     clearNotification,
+    enableSteam,
   };
 }

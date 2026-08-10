@@ -15,10 +15,12 @@ export default function ChatPopup() {
     typingUsers,
     connected,
     latestNotification,
+    steamEnabled,
     sendMessage,
     setTyping,
     setNickname,
     clearNotification,
+    enableSteam,
   } = useChat();
 
   return (
@@ -44,6 +46,8 @@ export default function ChatPopup() {
           onSend={sendMessage}
           onTyping={setTyping}
           onNicknameChange={setNickname}
+          steamEnabled={steamEnabled}
+          onSteam={enableSteam}
           onClose={() => setOpen(false)}
           onMinimize={() => setOpen(false)}
         />

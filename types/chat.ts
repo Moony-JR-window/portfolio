@@ -8,6 +8,13 @@ export interface Visitor {
   connectedAt: number;
 }
 
+export interface FileAttachment {
+  postId: string;
+  fileName: string;
+  mimeType?: string;
+  size?: number;
+}
+
 export interface ChatMessage {
   id: string;
   senderId: string;
@@ -15,11 +22,12 @@ export interface ChatMessage {
   text: string;
   timestamp: number;
   seenBy: string[];
+  file?: FileAttachment;
 }
 
 export type ClientToServerEvent =
   | { type: "identify"; nickname?: string }
-  | { type: "message"; text: string }
+  | { type: "message"; text: string; file?: FileAttachment }
   | { type: "typing"; isTyping: boolean }
   | { type: "seen"; messageId: string }
   | { type: "ping" };
