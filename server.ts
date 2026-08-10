@@ -436,7 +436,7 @@ const swaggerSpec: Record<string, unknown> = {
       "Store a single file per post. Re-uploading to the same post deletes the previous file first. " +
       "All endpoints are rate limited per client IP to 30 requests per 30 seconds (HTTP 429 when exceeded).",
   },
-  servers: [{ url: `http://localhost:${PORT}` }],
+  SERVERS_URL: true,
   paths: {
     "/api/upload/{postId}": {
       post: {
