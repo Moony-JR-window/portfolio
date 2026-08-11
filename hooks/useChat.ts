@@ -121,6 +121,10 @@ export function useChat() {
     setSteamEnabled(true);
   }, []);
 
+  const disableSteam = useCallback(() => {
+    setSteamEnabled(false);
+  }, []);
+
   const setTyping = useCallback((isTyping: boolean) => {
     socketRef.current?.send({ type: "typing", isTyping });
   }, []);
@@ -147,10 +151,11 @@ export function useChat() {
     latestNotification,
     steamEnabled,
     sendMessage,
-    setTyping,
+        setTyping,
     setNickname,
     markSeen,
     clearNotification,
     enableSteam,
+    disableSteam,
   };
 }
