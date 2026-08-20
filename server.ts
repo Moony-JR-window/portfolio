@@ -786,6 +786,10 @@ wss.on("connection", (ws, req) => {
     messages: chatStore.getRecentMessages(),
   });
 
+  // Notify the rest of the connected visitors that someone just joined
+  broadcast({ type: "visitor_joined", visitor }, id);
+  broadcast({ type: "online_count", count: chatStore.getOnlineCount() }, id);
+
   ws.on("message", (raw) => {
     let event: ClientToServerEvent;
 
@@ -795,31 +799,73 @@ wss.on("connection", (ws, req) => {
       return;
     }
 
-    if (event.type === "message") {
-      const sender = chatStore.getVisitor(id);
-      if (!sender) return;
+    switch (event.type) {
+      case "message": {
+        const sender = chatStore.getVisitor(id);
+        if (!sender) return;
 
-      const message: ChatMessage = {
-        id: randomUUID(),
-        senderId: id,
-        senderNickname: sender.nickname,
-        text: event.text,
-        timestamp: Date.now(),
-        seenBy: [id],
-        ...(event.file ? { file: event.file } : {}),
-      };
+        const message: ChatMessage = {
+          id: randomUUID(),
+          senderId: id,
+          senderNickname: sender.nickname,
+          text: event.text,
+          timestamp: Date.now(),
+          seenBy: [id],
+          ...(event.file ? { file: event.file } : {}),
+        };
 
-      chatStore.addMessage(message);
+        chatStore.addMessage(message);
 
-      broadcast({
-        type: "message",
-        message,
-      });
+        broadcast({
+          type: "message",
+          message,
+        });
+        break;
+      }
+
+      case "typing": {
+        const sender = chatStore.getVisitor(id);
+        if (!sender) return;
+        // Broadcast the typing status to every other connected visitor
+        broadcast(
+          {
+            type: "typing",
+            visitorId: id,
+            nickname: sender.nickname,
+            isTyping: event.isTyping,
+          },
+          id
+        );
+        break;
+      }
+
+      case "identify": {
+        const trimmed = event.nickname?.trim();
+        if (!trimmed) return;
+        if (chatStore.nicknameTaken(trimmed)) return;
+        chatStore.updateVisitor(id, { nickname: trimmed });
+        break;
+      }
+
+      case "seen": {
+        chatStore.markSeen(event.messageId, id);
+        broadcast(
+          {
+            type: "seen",
+            messageId: event.messageId,
+            visitorId: id,
+          },
+          id
+        );
+        break;
+      }
     }
   });
 
   ws.on("close", () => {
     clients.delete(id);
     chatStore.removeVisitor(id);
+    broadcast({ type: "visitor_left", visitorId: id });
+    broadcast({ type: "online_count", count: chatStore.getOnlineCount() });
   });
 });

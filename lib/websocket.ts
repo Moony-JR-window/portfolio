@@ -21,9 +21,15 @@ export class ChatSocket {
     if (url) {
       this.url = url;
     } else {
-      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    
-      this.url = `wss://moony-lovat.vercel.app/api/ws`;
+      // Allow overriding via env var — useful for local development where
+      // the WS server runs on a different host/port than the Next.js app.
+      const envUrl = process.env.NEXT_PUBLIC_WS_URL;
+      if (envUrl) {
+        this.url = envUrl;
+      } else {
+        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        this.url = `${protocol}//${window.location.host}/api/ws`;
+      }
     }
   }
 
