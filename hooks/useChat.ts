@@ -3,6 +3,10 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { ChatSocket } from "../lib/websocket";
 import type { Visitor, ChatMessage, ServerToClientEvent, FileAttachment } from "../types/chat";
+import {
+  playIncomingTypingSound,
+  playIncomingMessageSound,
+} from "../components/ui/message/useMessageSounds";
 
 interface TypingState {
   visitorId: string;
@@ -11,6 +15,7 @@ interface TypingState {
 
 export function useChat() {
   const socketRef = useRef<ChatSocket | null>(null);
+  const youIdRef = useRef<string | null>(null);
   const typingTimeout = useRef<Map<string, ReturnType<typeof setTimeout>>>(
     new Map()
   );
@@ -24,6 +29,10 @@ export function useChat() {
   const [latestNotification, setLatestNotification] =
     useState<ChatMessage | null>(null);
   const [steamEnabled, setSteamEnabled] = useState(false);
+
+  useEffect(() => {
+    youIdRef.current = you?.id ?? null;
+  }, [you]);
 
   useEffect(() => {
     const socket = new ChatSocket();
@@ -60,6 +69,10 @@ export function useChat() {
           setYou((current) => {
             if (current && event.message.senderId !== current.id) {
               setLatestNotification(event.message);
+              // Play an incoming-message tone when the message is from someone else.
+              if (event.message.senderId !== youIdRef.current) {
+                playIncomingMessageSound();
+              }
             }
             return current;
           });
@@ -68,6 +81,10 @@ export function useChat() {
         case "typing": {
           const key = event.visitorId;
           if (event.isTyping) {
+            // Play a soft ping when someone else starts typing (Messenger-style).
+            if (key !== youIdRef.current) {
+              playIncomingTypingSound();
+            }
             setTypingUsers((prev) => {
               const exists = prev.some((t) => t.visitorId === key);
               return exists

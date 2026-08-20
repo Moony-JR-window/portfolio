@@ -6,6 +6,7 @@ import MessageBubble from "./MessageBubble";
 import OnlineBadge from "./OnlineBadge";
 import { Visitor, ChatMessage, FileAttachment } from "@/types/chat";
 import BotCommandMenu from "./BotCommandMenu";
+import { useMessageSounds, isSoundMuted } from "./useMessageSounds";
 // import { API_BASE } from "@/lib/websocket";
 interface Props {
   you: Visitor | null;
@@ -55,6 +56,8 @@ export default function ChatWindow({
   const [steamNotice, setSteamNotice] = useState(false);
   const [notice, setNotice] = useState<{ type: "error" | "info"; text: string } | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [soundOn, setSoundOn] = useState<boolean>(!isSoundMuted());
+  const { playType, playSend, toggleMuted } = useMessageSounds();
 
   function showNotice(type: "error" | "info", text: string, duration = 4000) {
     setNotice({ type, text });
@@ -70,6 +73,9 @@ export default function ChatWindow({
 
   function handleChange(value: string) {
     setDraft(value);
+
+    // Messenger-style keypress sound
+    if (value && soundOn) playType();
 
     // Show slash command popup
     setShowCommands(value.startsWith("/"));
@@ -108,6 +114,8 @@ export default function ChatWindow({
     onSend(text);
     setDraft("");
     onTyping(false);
+    // Messenger-style sent sound
+    if (soundOn) playSend();
   }
 
   async function uploadFile(file: File) {
@@ -272,6 +280,16 @@ export default function ChatWindow({
         <div
           className=" z-40"
           style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <button
+            onClick={() => {
+              const next = toggleMuted();
+              setSoundOn(!next);
+            }}
+            title={soundOn ? "Mute sounds" : "Unmute sounds"}
+            style={iconBtnStyle}
+          >
+            {soundOn ? "🔊" : "🔇"}
+          </button>
           <button
             onClick={() => setShowVisitors((s) => !s)}
             title="Visitors"
