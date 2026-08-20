@@ -3,8 +3,8 @@ import type { ClientToServerEvent, ServerToClientEvent } from "../types/chat";
 // Base URL used for the file upload / download API. Defaults to the current
 // origin (same host that serves the WebSocket), overridable via env.
 export const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE ??
-  (typeof window !== "undefined" ? window.location.origin : "");
+  process.env.NEXT_PUBLIC_API_BASE || 
+  (typeof window !== "undefined" ? window.location.origin : 'https://moony-lovat.vercel.app');
 
 type Listener = (event: ServerToClientEvent) => void;
 
@@ -23,7 +23,7 @@ export class ChatSocket {
     } else {
       // Allow overriding via env var — useful for local development where
       // the WS server runs on a different host/port than the Next.js app.
-      const envUrl = process.env.NEXT_PUBLIC_WS_URL;
+      const envUrl = process.env.NEXT_PUBLIC_WS_URL??'https://moony-lovat.vercel.app';
       if (envUrl) {
         this.url = envUrl;
       } else {
