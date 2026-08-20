@@ -5,7 +5,7 @@
  * No binary audio assets required.
  *
  * Sounds:
- * - playTypeSound(): short "keyboard pop" on each keystroke.
+ * - playTypeSound(): crisp keyboard "click" with light pitch variation per keystroke.
  * - playSendSound():  quick "whoosh + chime" when you send a message.
  * - playIncomingTypingSound(): soft ping when someone else starts typing.
  * - playIncomingMessageSound(): tone when you receive a message.
@@ -71,21 +71,50 @@ function play(fn: (context: AudioContext, now: number) => void): void {
   }
 }
 
-/** Your own keystrokes. */
+/** Your own keystrokes — a short, crisp keyboard "click". */
+let typeVariant = 0;
 export function playTypeSound(): void {
   play((c, now) => {
+    // Add slight pitch variation so fast typing doesn't sound robotic.
+    const f = 380 + (typeVariant++ % 4) * 40;
+
+    // Fast-attack "click": a sharp, quick-decay tone.
     const osc = c.createOscillator();
-    const gain = c.createGain();
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(320, now);
-    osc.frequency.exponentialRampToValueAtTime(220, now + 0.03);
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(0.06, now + 0.005);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.06);
-    osc.connect(gain);
-    gain.connect(c.destination);
+    const oscGain = c.createGain();
+    osc.type = "square";
+    osc.frequency.setValueAtTime(f, now);
+    osc.frequency.exponentialRampToValueAtTime(f * 0.55, now + 0.03);
+    oscGain.gain.setValueAtTime(0.0001, now);
+    oscGain.gain.exponentialRampToValueAtTime(0.05, now + 0.002);
+    oscGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.035);
+    osc.connect(oscGain);
+    oscGain.connect(c.destination);
     osc.start(now);
-    osc.stop(now + 0.07);
+    osc.stop(now + 0.04);
+
+    // A touch of filtered noise gives it the mechanical "thock" of a key.
+    const noiseBuf = c.createBuffer(
+      1,
+      c.sampleRate * 0.03,
+      c.sampleRate
+    );
+    const data = noiseBuf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) {
+      data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+    }
+    const noise = c.createBufferSource();
+    noise.buffer = noiseBuf;
+    const hp = c.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.value = 1200;
+    const noiseGain = c.createGain();
+    noiseGain.gain.setValueAtTime(0.03, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.03);
+    noise.connect(hp);
+    hp.connect(noiseGain);
+    noiseGain.connect(c.destination);
+    noise.start(now);
+    noise.stop(now + 0.03);
   });
 }
 
