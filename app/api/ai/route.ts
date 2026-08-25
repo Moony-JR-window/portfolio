@@ -53,7 +53,7 @@ async function askConfiguredProvider(
     ""
   );
   // A widely-available free Groq model with good quality/speed.
-  const model = process.env.AI_MODEL || "llama-3.3-70b-versatile";
+  const model = process.env.AI_MODEL || "openai/gpt-oss-120b";
 
   const res = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
@@ -67,7 +67,7 @@ async function askConfiguredProvider(
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: message },
       ],
-      max_tokens: 1024,
+      max_tokens: 2048,
     }),
     signal: AbortSignal.timeout(45000),
   });
