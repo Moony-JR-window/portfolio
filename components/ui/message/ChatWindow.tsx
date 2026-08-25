@@ -51,6 +51,7 @@ export default function ChatWindow({
   const [showCommands, setShowCommands] = useState(false);
   const [showBotMenu, setShowBotMenu] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const messageInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadingName, setUploadingName] = useState<string | null>(null);
   const [steamNotice, setSteamNotice] = useState(false);
@@ -598,12 +599,18 @@ export default function ChatWindow({
               onAI={() => {
                 setShowCommands(false);
                 setDraft("/ai ");
-                // Focus the text input so the user can start typing right away.
+                // Focus the text input with the cursor at the END so the user can
+                // start typing the question right away (not at the start).
                 requestAnimationFrame(() => {
-                  const input = document.querySelector<HTMLInputElement>(
-                    'input[placeholder="Type a message..."]'
-                  );
-                  input?.focus();
+                  const input = messageInputRef.current;
+                  if (!input) return;
+                  input.focus();
+                  const len = input.value.length || "/ai ".length;
+                  try {
+                    input.setSelectionRange(len, len);
+                  } catch {
+                    /* best effort */
+                  }
                 });
               }}
             />
@@ -628,6 +635,7 @@ export default function ChatWindow({
             ) : null}
 
             <input
+              ref={messageInputRef}
               value={draft}
               onChange={(e) => handleChange(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
