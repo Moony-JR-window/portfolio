@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import MessageBubble from "./MessageBubble";
+import AIResponse from "./AIResponse";
 import OnlineBadge from "./OnlineBadge";
 import { Visitor, ChatMessage, FileAttachment } from "@/types/chat";
 import BotCommandMenu from "./BotCommandMenu";
@@ -476,18 +477,20 @@ export default function ChatWindow({
             {/* AI bot (/ai) response */}
             {aiThinking && (
               <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", margin: "6px 0" }}>
-                <span style={{ fontSize: 11, fontWeight: 600, color: "#65676b", marginBottom: 2 }}>
-                  🤖 AI Bot
+                <span style={{ fontSize: 11, fontWeight: 600, color: "#10a37f", marginBottom: 2 }}>
+                  ✨ MooNyBot
                 </span>
                 <div
                   style={{
-                    maxWidth: "75%",
-                    padding: "8px 12px",
-                    borderRadius: 16,
+                    maxWidth: "85%",
+                    padding: "10px 14px",
+                    borderRadius: 14,
                     fontSize: 14,
-                    lineHeight: 1.35,
-                    background: "#e4e6eb",
-                    color: "#050505",
+                    lineHeight: 1.5,
+                    background: "#ffffff",
+                    border: "1px solid rgba(16,163,127,0.25)",
+                    color: "#1f2328",
+                    boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
                     fontStyle: "italic",
                   }}
                 >
@@ -497,22 +500,25 @@ export default function ChatWindow({
             )}
 
             {aiReply && (
-              <MessageBubble
-                key={aiReply.id}
-                message={
-                  {
-                    id: aiReply.id,
-                    senderId: "__ai__",
-                    senderNickname: "🤖 AI Bot",
-                    text: aiReply.text,
-                    timestamp: Date.now(),
-                    seenBy: [],
-                  } as ChatMessage
-                }
-                isOwn={false}
-                steamEnabled={steamEnabled}
-                onNotify={(msg) => showNotice("error", msg)}
-              />
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", margin: "6px 0" }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: "#10a37f", marginBottom: 2 }}>
+                  ✨ MooNyBot
+                </span>
+                <div
+                  style={{
+                    maxWidth: "85%",
+                    padding: "10px 14px",
+                    borderRadius: 14,
+                    fontSize: 14,
+                    background: "#ffffff",
+                    border: "1px solid rgba(16,163,127,0.25)",
+                    color: "#1f2328",
+                    boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
+                  }}
+                >
+                  <AIResponse text={aiReply.text} />
+                </div>
+              </div>
             )}
 
             {uploadingName && (
