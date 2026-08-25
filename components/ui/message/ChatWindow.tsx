@@ -490,7 +490,7 @@ export default function ChatWindow({
                     fontStyle: "italic",
                   }}
                 >
-                  Thinking<span className="ai-dots">...</span>
+                  Thinking…
                 </div>
               </div>
             )}

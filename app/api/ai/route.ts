@@ -5,29 +5,119 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /**
- * Free AI chat endpoint (no API key required).
+ * AI chat endpoint for the "/ai" chat command.
  *
- * Proxies the question to Pollinations' free public text-generation API
- * (https://text.pollinations.ai) and returns the plain-text answer. This
- * keeps the upstream call on the server so we avoid CORS and never leak
- * any credentials to the browser.
+ * Works with TWO providers, chosen automatically:
+ *
+ *  1) OpenAI-compatible provider (recommended for reliability).
+ *     Configure with environment variables:
+ *       AI_API_KEY   – your API key (e.g. an OpenAI key)
+ *       AI_BASE_URL  – endpoint, e.g. https://api.openai.com/v1
+ *       AI_MODEL     – model name, e.g. gpt-4o-mini
+ *     When AI_API_KEY is set, requests are sent as OpenAI chat completions.
+ *
+ *  2) Free, no-key fallback via Pollinations' public text API
+ *     (https://text.pollinations.ai). No setup required. Note: this free
+ *     endpoint is community-run and may be rate-limited or blocked on some
+ *     networks, so the UI shows a friendly message if it ever fails.
  *
  * Body:
- *   {
- *     "message": "string"   // the user's question
- *   }
+ *   { "message": "string" }   // the user's question
  *
  * Response:
  *   { "reply": "string" }
  */
-
-const FREE_AI_URL = "https://text.pollinations.ai/";
 
 const SYSTEM_PROMPT =
   "You are MooNyBot, a friendly, helpful AI assistant running inside the " +
   "MoonyDev portfolio chat. Answer the user's question clearly and concisely. " +
   "Keep answers reasonably short (a few sentences to a short paragraph) unless " +
   "the question needs more detail.";
+
+const FALLBACK_REPLY =
+  "⚠️ I couldn't reach a free AI service from this network/deployment — " +
+  "public keyless AI endpoints are often rate-limited or blocked. Please try " +
+  "again in a moment. (Tip for the site owner: set an AI_API_KEY env var to " +
+  "use a reliable free provider like Groq.)";
+
+/** Use the configured OpenAI-compatible provider, if an API key exists. */
+async function askConfiguredProvider(
+  message: string
+): Promise<string | null> {
+  const apiKey = process.env.AI_API_KEY;
+  if (!apiKey) return null;
+
+  const baseUrl = (process.env.AI_BASE_URL || "https://api.openai.com/v1").replace(
+    /\/$/,
+    ""
+  );
+  const model = process.env.AI_MODEL || "gpt-4o-mini";
+
+  const res = await fetch(`${baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: message },
+      ],
+      max_tokens: 1024,
+    }),
+    signal: AbortSignal.timeout(45000),
+  });
+
+  if (!res.ok) throw new Error(`AI provider returned ${res.status}`);
+  const data = (await res.json()) as {
+    choices?: { message?: { content?: string } }[];
+  };
+  return data.choices?.[0]?.message?.content?.trim() || null;
+}
+
+/** Use free, no-key public text endpoints (Pollinations). */
+async function askFreeProvider(message: string): Promise<string | null> {
+  // Try a couple of keyless endpoint variants so a single block/error
+  // doesn't kill the whole request.
+  const endpoints = [
+    (q: string) => {
+      const url = new URL("https://text.pollinations.ai/" + encodeURIComponent(q));
+      url.searchParams.set("model", "openai");
+      url.searchParams.set("system", SYSTEM_PROMPT);
+      url.searchParams.set("private", "true");
+      return url.toString();
+    },
+    (q: string) => {
+      const url = new URL("https://text.pollinations.ai/" + encodeURIComponent(q));
+      url.searchParams.set("model", "mistral");
+      url.searchParams.set("system", SYSTEM_PROMPT);
+      url.searchParams.set("private", "true");
+      return url.toString();
+    },
+  ];
+
+  for (const buildUrl of endpoints) {
+    try {
+      const res = await fetch(buildUrl(message), {
+        method: "GET",
+        headers: { Accept: "text/plain" },
+        // Short timeout — these endpoints are unreliable, don't hang the user.
+        signal: AbortSignal.timeout(12000),
+      });
+      if (!res.ok) continue; // blocked/errored — try the next endpoint
+      const text = (await res.text()).trim();
+      // Upstream may wrap responses in quotes — strip them.
+      const cleaned = text.replace(/^["']|["']$/g, "").trim();
+      if (cleaned) return cleaned;
+    } catch {
+      // blocked or timed out — try the next endpoint
+    }
+  }
+
+  return null;
+}
 
 export async function POST(request: Request) {
   try {
@@ -40,38 +130,30 @@ export async function POST(request: Request) {
       return NextResponse.json({ reply: "Please ask a question." }, { status: 200 });
     }
 
-    // Free Pollinations text API — plain text response.
-    // Reference: GET https://text.pollinations.ai/{prompt}?model=...&system=...
-    const url = new URL(FREE_AI_URL + encodeURIComponent(message));
-    url.searchParams.set("model", "openai");
-    url.searchParams.set("system", SYSTEM_PROMPT);
-    url.searchParams.set("private", "true");
+    let reply: string | null = null;
 
-    const res = await fetch(url.toString(), {
-      method: "GET",
-      headers: { Accept: "text/plain" },
-      signal: AbortSignal.timeout(45000),
-    });
-
-    if (!res.ok) {
-      throw new Error(`Free AI upstream returned ${res.status}`);
+    // Prefer the configured (paid/key) provider when available…
+    try {
+      reply = await askConfiguredProvider(message);
+    } catch (err) {
+      console.error("Configured AI provider failed, falling back to free:", err);
+      reply = null;
     }
 
-    const text = (await res.text()).trim();
-    // Upstream may wrap responses in quotes — strip them.
-    const cleaned = text.replace(/^["']|["']$/g, "").trim();
-    const reply = cleaned || "I couldn't think of an answer. Try again!";
+    // …otherwise fall back to the free, no-key endpoint.
+    if (!reply) {
+      try {
+        reply = await askFreeProvider(message);
+      } catch (err) {
+        console.error("Free AI provider failed:", err);
+        reply = null;
+      }
+    }
 
-    return NextResponse.json({ reply });
+    return NextResponse.json({ reply: reply || FALLBACK_REPLY });
   } catch (err) {
     console.error("AI route error:", err);
-    // Surface a friendly message so the user isn't left hanging.
-    return NextResponse.json(
-      {
-        reply:
-          "⚠️ The free AI service is temporarily unavailable. Please try again in a moment.",
-      },
-      { status: 200 }
-    );
+    return NextResponse.json({ reply: FALLBACK_REPLY }, { status: 200 });
   }
 }
+
