@@ -52,7 +52,7 @@ export default function ChatWindow({
   const [showCommands, setShowCommands] = useState(false);
   const [showBotMenu, setShowBotMenu] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const messageInputRef = useRef<HTMLInputElement>(null);
+  const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadingName, setUploadingName] = useState<string | null>(null);
   const [steamNotice, setSteamNotice] = useState(false);
@@ -76,6 +76,14 @@ export default function ChatWindow({
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages, typingUsers, aiThinking, aiReply]);
+
+  // Auto-grow the message box (ChatGPT-style) when the draft gets long.
+  useEffect(() => {
+    const ta = messageInputRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    ta.style.height = `${Math.min(ta.scrollHeight, 120)}px`;
+  }, [draft]);
 
   function handleChange(value: string) {
     setDraft(value);
@@ -587,7 +595,7 @@ export default function ChatWindow({
             style={{
               position: "relative", // IMPORTANT
               display: "flex",
-              alignItems: "center",
+              alignItems: "flex-end",
               padding: 8,
               borderTop: "1px solid #eee",
               gap: 8,
@@ -640,12 +648,20 @@ export default function ChatWindow({
               </>
             ) : null}
 
-            <input
+            <textarea
               ref={messageInputRef}
               value={draft}
               onChange={(e) => handleChange(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-              placeholder="Type a message..."
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSubmit();
+                }
+                // Shift+Enter inserts a newline (default textarea behaviour).
+              }}
+              placeholder="Type a message... (Shift+Enter for new line)"
+              rows={1}
+              wrap="soft"
               style={{
                 flex: 1,
                 border: "none",
@@ -653,6 +669,12 @@ export default function ChatWindow({
                 padding: "8px 14px",
                 fontSize: 14,
                 outline: "none",
+                resize: "none",
+                overflowY: "auto",
+                minHeight: 36,
+                maxHeight: 120,
+                lineHeight: 1.5,
+                fontFamily: "inherit",
               }}
               className="backdrop-blur-md"
             />
