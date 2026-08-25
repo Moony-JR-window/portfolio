@@ -9,12 +9,13 @@ export const maxDuration = 60;
  *
  * Works with TWO providers, chosen automatically:
  *
- *  1) OpenAI-compatible provider (recommended for reliability).
- *     Configure with environment variables:
- *       AI_API_KEY   – your API key (e.g. an OpenAI key)
- *       AI_BASE_URL  – endpoint, e.g. https://api.openai.com/v1
- *       AI_MODEL     – model name, e.g. gpt-4o-mini
- *     When AI_API_KEY is set, requests are sent as OpenAI chat completions.
+ *  1) Groq (free tier — recommended, fast, no credit card). Configure with:
+ *       AI_API_KEY   – your Groq API key (console.groq.com/keys)
+ *       AI_BASE_URL  – optional, defaults to https://api.groq.com/openai/v1
+ *       AI_MODEL     – optional, defaults to a free Groq model
+ *     When AI_API_KEY is set, requests are sent as OpenAI chat completions
+ *     to Groq. Any other OpenAI-compatible provider also works by overriding
+ *     AI_BASE_URL / AI_MODEL.
  *
  *  2) Free, no-key fallback via Pollinations' public text API
  *     (https://text.pollinations.ai). No setup required. Note: this free
@@ -40,18 +41,19 @@ const FALLBACK_REPLY =
   "again in a moment. (Tip for the site owner: set an AI_API_KEY env var to " +
   "use a reliable free provider like Groq.)";
 
-/** Use the configured OpenAI-compatible provider, if an API key exists. */
+/** Use the configured provider via an API key (defaults to Groq free tier). */
 async function askConfiguredProvider(
   message: string
 ): Promise<string | null> {
   const apiKey = process.env.AI_API_KEY;
   if (!apiKey) return null;
 
-  const baseUrl = (process.env.AI_BASE_URL || "https://api.openai.com/v1").replace(
+  const baseUrl = (process.env.AI_BASE_URL || "https://api.groq.com/openai/v1").replace(
     /\/$/,
     ""
   );
-  const model = process.env.AI_MODEL || "gpt-4o-mini";
+  // A widely-available free Groq model with good quality/speed.
+  const model = process.env.AI_MODEL || "llama-3.3-70b-versatile";
 
   const res = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
