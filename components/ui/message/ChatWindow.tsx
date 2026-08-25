@@ -58,6 +58,10 @@ export default function ChatWindow({
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [soundOn, setSoundOn] = useState<boolean>(!isSoundMuted());
   const { playType, playSend, toggleMuted } = useMessageSounds();
+  // ---- AI bot state (/ai command) ----
+  const [aiReply, setAiReply] = useState<{ text: string; id: string } | null>(null);
+  const [aiThinking, setAiThinking] = useState(false);
+  const aiIdRef = useRef(0);
 
   function showNotice(type: "error" | "info", text: string, duration = 4000) {
     setNotice({ type, text });
@@ -69,7 +73,7 @@ export default function ChatWindow({
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-  }, [messages, typingUsers]);
+  }, [messages, typingUsers, aiThinking, aiReply]);
 
   function handleChange(value: string) {
     setDraft(value);
@@ -98,16 +102,28 @@ export default function ChatWindow({
     const text = draft.trim();
     if (!text) return;
 
-    // Slash commands: handle /steam locally, ignore the rest
+    // Slash commands: handle /steam & /ai locally, ignore the rest
     if (text.startsWith("/")) {
-      if (text.trim().toLowerCase() === "/steam") {
+      const lower = text.toLowerCase();
+
+      if (lower === "/steam") {
         onSteam();
         setDraft("");
         onTyping(false);
         setShowCommands(false);
         setSteamNotice(true);
         setTimeout(() => setSteamNotice(false), 4000);
+        return;
       }
+
+      if (lower === "/ai" || lower.startsWith("/ai ")) {
+        setDraft("");
+        onTyping(false);
+        setShowCommands(false);
+        void askAI(text);
+        return;
+      }
+
       return;
     }
 
@@ -116,6 +132,40 @@ export default function ChatWindow({
     onTyping(false);
     // Messenger-style sent sound
     if (soundOn) playSend();
+  }
+
+  /** Ask the free AI and show its answer as a bot bubble. */
+  async function askAI(raw: string) {
+    const question = raw.replace(/^\/ai\s*/i, "").trim();
+    if (!question) {
+      setAiReply({
+        id: `ai-${++aiIdRef.current}`,
+        text: 'Usage: type "/ai <your question>" — e.g. "/ai what is Next.js?"',
+      });
+      return;
+    }
+
+    setAiThinking(true);
+    setAiReply(null);
+    try {
+      const res = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: question }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { reply?: string };
+      setAiReply({
+        id: `ai-${++aiIdRef.current}`,
+        text: data.reply || "I couldn't think of an answer. Try again!",
+      });
+    } catch {
+      setAiReply({
+        id: `ai-${++aiIdRef.current}`,
+        text: "⚠️ The free AI service is temporarily unavailable. Please try again.",
+      });
+    } finally {
+      setAiThinking(false);
+    }
   }
 
   async function uploadFile(file: File) {
@@ -422,6 +472,48 @@ export default function ChatWindow({
               </div>
             )}
 
+            {/* AI bot (/ai) response */}
+            {aiThinking && (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", margin: "6px 0" }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: "#65676b", marginBottom: 2 }}>
+                  🤖 AI Bot
+                </span>
+                <div
+                  style={{
+                    maxWidth: "75%",
+                    padding: "8px 12px",
+                    borderRadius: 16,
+                    fontSize: 14,
+                    lineHeight: 1.35,
+                    background: "#e4e6eb",
+                    color: "#050505",
+                    fontStyle: "italic",
+                  }}
+                >
+                  Thinking<span className="ai-dots">...</span>
+                </div>
+              </div>
+            )}
+
+            {aiReply && (
+              <MessageBubble
+                key={aiReply.id}
+                message={
+                  {
+                    id: aiReply.id,
+                    senderId: "__ai__",
+                    senderNickname: "🤖 AI Bot",
+                    text: aiReply.text,
+                    timestamp: Date.now(),
+                    seenBy: [],
+                  } as ChatMessage
+                }
+                isOwn={false}
+                steamEnabled={steamEnabled}
+                onNotify={(msg) => showNotice("error", msg)}
+              />
+            )}
+
             {uploadingName && (
               <div style={{ display: "flex", justifyContent: "flex-end", margin: "6px 0" }}>
                 <div
@@ -503,6 +595,17 @@ export default function ChatWindow({
                 setDraft("");
               }}
               onCloseBot={() => setShowBotMenu(false)}
+              onAI={() => {
+                setShowCommands(false);
+                setDraft("/ai ");
+                // Focus the text input so the user can start typing right away.
+                requestAnimationFrame(() => {
+                  const input = document.querySelector<HTMLInputElement>(
+                    'input[placeholder="Type a message..."]'
+                  );
+                  input?.focus();
+                });
+              }}
             />
 
             {steamEnabled ? (

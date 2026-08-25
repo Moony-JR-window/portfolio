@@ -5,6 +5,7 @@ interface Props {
     showBotMenu: boolean;
     onOpenBot: () => void;
     onCloseBot: () => void;
+    onAI?: () => void;
 }
 
 const itemStyle: React.CSSProperties = {
@@ -21,6 +22,7 @@ export default function BotCommandMenu({
     showBotMenu,
     onOpenBot,
     onCloseBot,
+    onAI,
 }: Props) {
     if (!showCommands && !showBotMenu) return null;
 
@@ -40,6 +42,7 @@ export default function BotCommandMenu({
             }}
         >
             {showCommands && !showBotMenu && (
+                <>
                 <button
                     className=" bg-gray-700 "
                     onClick={onOpenBot}
@@ -62,6 +65,30 @@ export default function BotCommandMenu({
                         Download tools & templates
                     </div>
                 </button>
+
+                <button
+                    className=" bg-gray-700 "
+                    onClick={onAI}
+                    style={{
+                        width: "100%",
+                        border: "none",
+                        padding: 12,
+                        cursor: "pointer",
+                        textAlign: "left",
+                    }}
+                >
+                    <div style={{ fontWeight: 600 }}>✨ AI Assistant</div>
+                    <div
+                        style={{
+                            fontSize: 12,
+                            color: "#777",
+                            marginTop: 4,
+                        }}
+                    >
+                        Ask anything — type /ai &lt;question&gt; (free AI)
+                    </div>
+                </button>
+                </>
             )}
 
             {showBotMenu && (
