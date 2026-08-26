@@ -16,6 +16,9 @@ import AIResponse from "./AIResponse";
  *     restores the previous size/position.
  *   • Typing "/exit" in its input returns it to normal: restores from
  *     maximized if maximized, otherwise closes the window.
+ *   • 🖼️ Upload image — attaches a picture (≤4 MB) to the next question;
+ *     it is sent to /api/ai as a base64 data URL for vision analysis.
+ *   • 🎙️ Voice input — placeholder button that alerts "to be update".
  *
  * History is cached in localStorage with a 1-hour TTL, mirroring the old
  * inline behaviour. Answers come from the existing /api/ai endpoint and are
@@ -34,6 +37,8 @@ interface AIChatMessage {
   role: "user" | "assistant";
   text: string;
   timestamp: number;
+  /** Optional data-URL preview of an image attached to this (user) message. */
+  imageDataUrl?: string;
 }
 
 interface Props {
@@ -45,6 +50,9 @@ interface Props {
 const CACHE_KEY = "moonydev_ai_chat_cache_v1";
 const TTL_MS = 60 * 60 * 1000; // 1 hour
 const MAX_CACHED = 200; // keep the cache bounded
+
+/** Max accepted image size for the upload button (base64 inflates ~33%). */
+const MAX_IMAGE_BYTES = 4 * 1024 * 1024; // 4 MB
 
 function loadCache(): AIChatMessage[] {
   try {
@@ -65,6 +73,11 @@ export default function AIChatWindow({ initialQuestion, onClose }: Props) {
   const [messages, setMessages] = useState<AIChatMessage[]>([]);
   const [thinking, setThinking] = useState(false);
   const [draft, setDraft] = useState("");
+
+  // ---- Image attachment (sent with the next question) ----
+  const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
+  const [imageName, setImageName] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ---- Window geometry (normal/restored mode) ----
   const [geo, setGeo] = useState(() => {
@@ -127,7 +140,11 @@ export default function AIChatWindow({ initialQuestion, onClose }: Props) {
   // Persist history so the conversation survives reopen/reload (1h TTL).
   useEffect(() => {
     try {
-      localStorage.setItem(CACHE_KEY, JSON.stringify(messages.slice(-MAX_CACHED)));
+      // Base64 images are far too big for localStorage — persist text only.
+      const withoutImages = messages
+        .slice(-MAX_CACHED)
+        .map((m) => (m.imageDataUrl ? { ...m, imageDataUrl: undefined } : m));
+      localStorage.setItem(CACHE_KEY, JSON.stringify(withoutImages));
     } catch {
       /* storage unavailable — ignore */
     }
@@ -156,28 +173,38 @@ export default function AIChatWindow({ initialQuestion, onClose }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [maximized]);
 
-  function pushMsg(role: AIChatMessage["role"], text: string) {
+  function pushMsg(
+    role: AIChatMessage["role"],
+    text: string,
+    img?: string | null
+  ) {
     const msg: AIChatMessage = {
       id: `aic-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       role,
       text,
       timestamp: Date.now(),
+      ...(img ? { imageDataUrl: img } : {}),
     };
     setMessages((prev) => [...prev, msg]);
   }
 
-  /** Ask the free AI and append its answer to the conversation. */
-  async function ask(question: string) {
+  /** Ask the AI (optionally with an attached image) and append its answer. */
+  async function ask(question: string, img?: string | null) {
     const q = question.trim();
     if (!q) return;
 
-    pushMsg("user", q);
+    pushMsg("user", q, img);
     setThinking(true);
+    // The attachment has been consumed into the pushed message — reset composer.
+    setImageDataUrl(null);
+    setImageName(null);
     try {
       const res = await fetch("/api/ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: q }),
+        body: JSON.stringify(
+          img ? { message: q, imageDataUrl: img } : { message: q }
+        ),
       });
       const data = (await res.json().catch(() => ({}))) as { reply?: string };
       pushMsg("assistant", data.reply || "I couldn't think of an answer. Try again!");
@@ -193,7 +220,18 @@ export default function AIChatWindow({ initialQuestion, onClose }: Props) {
 
   function handleSubmit() {
     const text = draft.trim();
-    if (!text || thinking) return;
+    if ((!text && !imageDataUrl) || thinking) return;
+
+    // An attached image goes straight to the AI (slash commands need plain text)
+    if (imageDataUrl) {
+      setDraft("");
+      void ask(
+        text ||
+          "What do you see in this image? Describe it and answer helpfully.",
+        imageDataUrl
+      );
+      return;
+    }
 
     // Commands understood by the AI window
     if (text.startsWith("/")) {
@@ -292,6 +330,9 @@ export default function AIChatWindow({ initialQuestion, onClose }: Props) {
       startH: rect.height,
     };
   }
+
+  // Send is allowed with text OR an attached image (as long as not thinking).
+  const canSend = (!!draft.trim() || !!imageDataUrl) && !thinking;
 
   const windowStyle: React.CSSProperties = maximized
     ? {
@@ -438,6 +479,20 @@ export default function AIChatWindow({ initialQuestion, onClose }: Props) {
                   wordBreak: "break-word",
                 }}
               >
+                {m.imageDataUrl && (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img
+                    src={m.imageDataUrl}
+                    alt="Attached"
+                    style={{
+                      display: "block",
+                      maxWidth: "100%",
+                      maxHeight: 220,
+                      borderRadius: 10,
+                      marginBottom: m.text ? 8 : 0,
+                    }}
+                  />
+                )}
                 {m.text}
               </div>
             </div>
@@ -518,6 +573,51 @@ export default function AIChatWindow({ initialQuestion, onClose }: Props) {
         )}
       </div>
 
+      {/* Attached-image preview strip */}
+      {imageDataUrl && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            margin: "0 8px",
+            padding: "8px 4px",
+            flexShrink: 0,
+          }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={imageDataUrl}
+            alt={imageName ?? "Attached image"}
+            style={{ width: 44, height: 44, objectFit: "cover", borderRadius: 8 }}
+          />
+          <span
+            style={{
+              flex: 1,
+              minWidth: 0,
+              fontSize: 12,
+              color: "#57606a",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {imageName ?? "image"}
+          </span>
+          <button
+            title="Remove image"
+            onClick={() => {
+              setImageDataUrl(null);
+              setImageName(null);
+              if (fileInputRef.current) fileInputRef.current.value = "";
+            }}
+            style={{ ...iconBtnStyle, color: "#d1242f", fontSize: 13 }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Input */}
       <div
         style={{
@@ -529,6 +629,49 @@ export default function AIChatWindow({ initialQuestion, onClose }: Props) {
           flexShrink: 0,
         }}
       >
+        {/* Hidden file picker for the 🖼️ upload button */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          hidden
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = ""; // allow re-picking the same file later
+            if (!file) return;
+            if (!file.type.startsWith("image/")) {
+              window.alert("Please choose an image file.");
+              return;
+            }
+            if (file.size > MAX_IMAGE_BYTES) {
+              window.alert("Image is too large — please pick one under 4 MB.");
+              return;
+            }
+            const reader = new FileReader();
+            reader.onload = () => {
+              if (typeof reader.result === "string") {
+                setImageDataUrl(reader.result);
+                setImageName(file.name);
+              }
+            };
+            reader.readAsDataURL(file);
+          }}
+        />
+        <button
+          title="Upload image"
+          onClick={() => fileInputRef.current?.click()}
+          style={{ ...iconBtnStyle, fontSize: 18, padding: 4 }}
+        >
+          🖼️
+        </button>
+        <button
+          title="Voice input"
+          onClick={() => window.alert("🎙️ Voice input — to be update")}
+          style={{ ...iconBtnStyle, fontSize: 18, padding: 4 }}
+        >
+          🎙️
+        </button>
+
         <textarea
           ref={inputRef}
           value={draft}
@@ -541,7 +684,11 @@ export default function AIChatWindow({ initialQuestion, onClose }: Props) {
             }
             // Shift+Enter inserts a newline (default textarea behaviour).
           }}
-          placeholder='Ask anything… ("/exit" to close)'
+          placeholder={
+            imageDataUrl
+              ? "Ask something about this image…"
+              : 'Ask anything… ("/exit" to close)'
+          }
           rows={1}
           wrap="soft"
           style={{
@@ -566,16 +713,16 @@ export default function AIChatWindow({ initialQuestion, onClose }: Props) {
         />
         <button
           onClick={handleSubmit}
-          disabled={!draft.trim() || thinking}
+          disabled={!canSend}
           style={{
             border: "none",
             borderRadius: "50%",
             width: 36,
             height: 36,
-            background: draft.trim() && !thinking ? "#0084ff" : "#c9d4e0",
+            background: canSend ? "#0084ff" : "#c9d4e0",
             color: "#fff",
             fontSize: 15,
-            cursor: draft.trim() && !thinking ? "pointer" : "default",
+            cursor: canSend ? "pointer" : "default",
             flexShrink: 0,
           }}
         >

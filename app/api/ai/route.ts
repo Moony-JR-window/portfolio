@@ -23,7 +23,11 @@ export const maxDuration = 60;
  *     networks, so the UI shows a friendly message if it ever fails.
  *
  * Body:
- *   { "message": "string" }   // the user's question
+ *   { "message": "string" }                  // the user's question
+ *   { "message": "…", "imageDataUrl": "…" }  // question + attached image
+ *
+ * When "imageDataUrl" (an inline data:image/...;base64 URL ≤ ~6 MB) is sent,
+ * a vision-capable model is used so MooNyBot can "see" the attachment.
  *
  * Response:
  *   { "reply": "string" }
@@ -41,9 +45,41 @@ const FALLBACK_REPLY =
   "again in a moment. (Tip for the site owner: set an AI_API_KEY env var to " +
   "use a reliable free provider like Groq.)";
 
+const IMAGE_FALLBACK_REPLY =
+  "⚠️ I received your image but couldn't reach a vision-capable AI service " +
+  "from this network/deployment. Please try again in a moment. (Tip for the " +
+  "site owner: set AI_API_KEY with a vision-capable model, e.g. Groq's " +
+  "meta-llama/llama-4-scout-17b-16e-instruct.)";
+
+/** Only well-formed inline data URLs like `data:image/png;base64,…` (≤ ~6 MB). */
+function isValidImageDataUrl(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length <= 7_000_000 &&
+    /^data:image\/(?:png|jpe?g|gif|webp);base64,[A-Za-z0-9+/=]+$/i.test(value)
+  );
+}
+
+/** Multimodal content parts for OpenAI-compatible vision APIs. */
+type TextPart = { type: "text"; text: string };
+type ImagePart = { type: "image_url"; image_url: { url: string } };
+
+/** Build the "user" message: plain string, or text + image parts with an image. */
+function buildUserContent(
+  message: string,
+  imageDataUrl?: string
+): string | (TextPart | ImagePart)[] {
+  if (!imageDataUrl) return message;
+  return [
+    { type: "text", text: message },
+    { type: "image_url", image_url: { url: imageDataUrl } },
+  ];
+}
+
 /** Use the configured provider via an API key (defaults to Groq free tier). */
 async function askConfiguredProvider(
-  message: string
+  message: string,
+  imageDataUrl?: string
 ): Promise<string | null> {
   const apiKey = process.env.AI_API_KEY;
   if (!apiKey) return null;
@@ -52,8 +88,12 @@ async function askConfiguredProvider(
     /\/$/,
     ""
   );
-  // A widely-available free Groq model with good quality/speed.
-  const model = process.env.AI_MODEL || "openai/gpt-oss-120b";
+  // A vision-capable free Groq model when an image is attached, otherwise a
+  // widely-available free text model with good quality/speed.
+  const model = imageDataUrl
+    ? process.env.AI_VISION_MODEL ||
+      "meta-llama/llama-4-scout-17b-16e-instruct"
+    : process.env.AI_MODEL || "openai/gpt-oss-120b";
 
   const res = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
@@ -65,7 +105,7 @@ async function askConfiguredProvider(
       model,
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: message },
+        { role: "user", content: buildUserContent(message, imageDataUrl) },
       ],
       max_tokens: 2048,
     }),
@@ -79,8 +119,41 @@ async function askConfiguredProvider(
   return data.choices?.[0]?.message?.content?.trim() || null;
 }
 
-/** Use free, no-key public text endpoints (Pollinations). */
-async function askFreeProvider(message: string): Promise<string | null> {
+/** Use free, no-key public endpoints (Pollinations). */
+async function askFreeProvider(
+  message: string,
+  imageDataUrl?: string
+): Promise<string | null> {
+  // With an image attached, try Pollinations' OpenAI-compatible endpoint,
+  // which accepts multimodal (vision) content parts on some free models.
+  if (imageDataUrl) {
+    try {
+      const res = await fetch("https://text.pollinations.ai/openai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "openai",
+          messages: [
+            { role: "system", content: SYSTEM_PROMPT },
+            { role: "user", content: buildUserContent(message, imageDataUrl) },
+          ],
+          private: true,
+        }),
+        signal: AbortSignal.timeout(20000),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as {
+          choices?: { message?: { content?: string } }[];
+        };
+        const reply = data.choices?.[0]?.message?.content?.trim();
+        if (reply) return reply;
+      }
+    } catch {
+      // blocked or timed out — fall through
+    }
+    return null; // image understanding needs a real vision provider
+  }
+
   // Try a couple of keyless endpoint variants so a single block/error
   // doesn't kill the whole request.
   const endpoints = [
@@ -125,9 +198,18 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json().catch(() => ({}))) as {
       message?: string;
+      imageDataUrl?: string;
     };
 
-    const message = (body.message ?? "").trim();
+    // Reject malformed/oversized attachments silently (treat as no image).
+    const imageDataUrl = isValidImageDataUrl(body.imageDataUrl)
+      ? body.imageDataUrl
+      : undefined;
+
+    let message = (body.message ?? "").trim();
+    if (!message && imageDataUrl) {
+      message = "Describe this image and answer helpfully about it.";
+    }
     if (!message) {
       return NextResponse.json({ reply: "Please ask a question." }, { status: 200 });
     }
@@ -136,7 +218,7 @@ export async function POST(request: Request) {
 
     // Prefer the configured (paid/key) provider when available…
     try {
-      reply = await askConfiguredProvider(message);
+      reply = await askConfiguredProvider(message, imageDataUrl);
     } catch (err) {
       console.error("Configured AI provider failed, falling back to free:", err);
       reply = null;
@@ -145,12 +227,15 @@ export async function POST(request: Request) {
     // …otherwise fall back to the free, no-key endpoint.
     if (!reply) {
       try {
-        reply = await askFreeProvider(message);
+        reply = await askFreeProvider(message, imageDataUrl);
       } catch (err) {
         console.error("Free AI provider failed:", err);
         reply = null;
       }
     }
+
+    // An image was attached but nothing could process it — say so clearly.
+    if (!reply && imageDataUrl) reply = IMAGE_FALLBACK_REPLY;
 
     return NextResponse.json({ reply: reply || FALLBACK_REPLY });
   } catch (err) {
