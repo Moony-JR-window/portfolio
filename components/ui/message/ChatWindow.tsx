@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 
 import MessageBubble from "./MessageBubble";
-import AIResponse from "./AIResponse";
 import OnlineBadge from "./OnlineBadge";
 import { Visitor, ChatMessage, FileAttachment } from "@/types/chat";
 import BotCommandMenu from "./BotCommandMenu";
@@ -20,6 +19,8 @@ interface Props {
   onNicknameChange: (nickname: string) => void;
   steamEnabled: boolean;
   onSteam: () => void;
+  /** Open the dedicated AI chat window ("/ai" command); optional first question. */
+  onOpenAI: (question?: string) => void;
   onClose: () => void;
   onMinimize: () => void;
 }
@@ -35,6 +36,7 @@ export default function ChatWindow({
   onNicknameChange,
   steamEnabled,
   onSteam,
+  onOpenAI,
   onClose,
   onMinimize,
 }: Props) {
@@ -60,60 +62,6 @@ export default function ChatWindow({
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [soundOn, setSoundOn] = useState<boolean>(!isSoundMuted());
   const { playType, playSend, toggleMuted } = useMessageSounds();
-  // ---- AI bot state (/ai command) ----
-  // Multiple AI replies are cached in localStorage with a 1-hour TTL and
-  // auto-deleted once they're older than one hour.
-  interface AIMessage {
-    id: string;
-    text: string;
-    timestamp: number;
-  }
-  const AI_CACHE_KEY = "moonydev_ai_cache";
-  const AI_TTL_MS = 60 * 60 * 1000; // 1 hour
-  const MAX_AI_CACHED = 30; // keep the cache bounded
-
-  function loadAICache(): AIMessage[] {
-    try {
-      const raw = localStorage.getItem(AI_CACHE_KEY);
-      if (!raw) return [];
-      const parsed = JSON.parse(raw) as AIMessage[];
-      const now = Date.now();
-      return parsed.filter((m) => now - m.timestamp <= AI_TTL_MS);
-    } catch {
-      return [];
-    }
-  }
-
-  // Start empty and restore from localStorage after mount — reading storage
-  // during render would cause an SSR/CSR hydration mismatch.
-  const [aiMessages, setAiMessages] = useState<AIMessage[]>([]);
-  const [aiThinking, setAiThinking] = useState(false);
-
-  useEffect(() => {
-    setAiMessages(loadAICache());
-  }, []);
-
-  // Auto-delete AI messages older than 1 hour while the page is open.
-  useEffect(() => {
-    const purge = () => {
-      const now = Date.now();
-      setAiMessages((prev) => {
-        const kept = prev.filter((m) => now - m.timestamp <= AI_TTL_MS);
-        return kept.length === prev.length ? prev : kept;
-      });
-    };
-    const id = setInterval(purge, 60_000); // check every minute
-    return () => clearInterval(id);
-  }, []);
-
-  // Persist the AI cache so replies survive a page reload (with the 1h TTL).
-  useEffect(() => {
-    try {
-      localStorage.setItem(AI_CACHE_KEY, JSON.stringify(aiMessages.slice(-MAX_AI_CACHED)));
-    } catch {
-      /* storage unavailable — ignore */
-    }
-  }, [aiMessages]);
 
   function showNotice(type: "error" | "info", text: string, duration = 4000) {
     setNotice({ type, text });
@@ -125,7 +73,7 @@ export default function ChatWindow({
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-  }, [messages, typingUsers, aiThinking, aiMessages]);
+  }, [messages, typingUsers]);
 
   // Auto-grow the message box (ChatGPT-style) when the draft gets long.
   useEffect(() => {
@@ -180,7 +128,10 @@ export default function ChatWindow({
         setDraft("");
         onTyping(false);
         setShowCommands(false);
-        void askAI(text);
+        // The AI moved to its own dedicated chat window — pass along any
+        // question typed after "/ai" so it is asked there right away.
+        const question = text.replace(/^\/ai\s*/i, "").trim();
+        onOpenAI(question || undefined);
         return;
       }
 
@@ -192,43 +143,6 @@ export default function ChatWindow({
     onTyping(false);
     // Messenger-style sent sound
     if (soundOn) playSend();
-  }
-
-  /** Append an AI reply to the cached list (with the current timestamp). */
-  function addAIMessage(text: string) {
-    const msg: AIMessage = {
-      // Timestamp-based id — survives cache restores without colliding
-      // with ids generated in a previous session.
-      id: `ai-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      text,
-      timestamp: Date.now(),
-    };
-    setAiMessages((prev) => [...prev, msg]);
-    return msg;
-  }
-
-  /** Ask the free AI and show its answer as a bot bubble. */
-  async function askAI(raw: string) {
-    const question = raw.replace(/^\/ai\s*/i, "").trim();
-    if (!question) {
-      addAIMessage('Usage: type "/ai <your question>" — e.g. "/ai what is Next.js?"');
-      return;
-    }
-
-    setAiThinking(true);
-    try {
-      const res = await fetch("/api/ai", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: question }),
-      });
-      const data = (await res.json().catch(() => ({}))) as { reply?: string };
-      addAIMessage(data.reply || "I couldn't think of an answer. Try again!");
-    } catch {
-      addAIMessage("⚠️ The free AI service is temporarily unavailable. Please try again.");
-    } finally {
-      setAiThinking(false);
-    }
   }
 
   async function uploadFile(file: File) {
@@ -534,53 +448,6 @@ export default function ChatWindow({
                 {typingUsers.length === 1 ? "is" : "are"} typing...
               </div>
             )}
-
-            {/* AI bot (/ai) response */}
-            {aiThinking && (
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", margin: "6px 0" }}>
-                <span style={{ fontSize: 11, fontWeight: 600, color: "#10a37f", marginBottom: 2 }}>
-                  ✨ MooNyBot
-                </span>
-                <div
-                  style={{
-                    maxWidth: "85%",
-                    padding: "10px 14px",
-                    borderRadius: 14,
-                    fontSize: 14,
-                    lineHeight: 1.5,
-                    background: "#ffffff",
-                    border: "1px solid rgba(16,163,127,0.25)",
-                    color: "#1f2328",
-                    boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
-                    fontStyle: "italic",
-                  }}
-                >
-                  Thinking…
-                </div>
-              </div>
-            )}
-
-            {aiMessages.map((m) => (
-              <div key={m.id} style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", margin: "6px 0" }}>
-                <span style={{ fontSize: 11, fontWeight: 600, color: "#10a37f", marginBottom: 2 }}>
-                  ✨ MooNyBot
-                </span>
-                <div
-                  style={{
-                    maxWidth: "85%",
-                    padding: "10px 14px",
-                    borderRadius: 14,
-                    fontSize: 14,
-                    background: "#ffffff",
-                    border: "1px solid rgba(16,163,127,0.25)",
-                    color: "#1f2328",
-                    boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
-                  }}
-                >
-                  <AIResponse text={m.text} />
-                </div>
-              </div>
-            ))}
 
             {uploadingName && (
               <div style={{ display: "flex", justifyContent: "flex-end", margin: "6px 0" }}>

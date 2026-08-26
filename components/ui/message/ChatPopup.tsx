@@ -3,10 +3,24 @@
 import { useChat } from "@/hooks/useChat";
 import { useState } from "react";
 import ChatWindow from "./ChatWindow";
+import AIChatWindow from "./AIChatWindow";
 import Notification from"./Notification"
 
 export default function ChatPopup() {
   const [open, setOpen] = useState(false);
+
+  // ---- Dedicated AI chat window ("/ai" command) ----
+  // aiSeq changes on every open so a newly requested question re-mounts the
+  // window and is asked right away; history itself lives in localStorage.
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiSeq, setAiSeq] = useState(0);
+  const [aiQuestion, setAiQuestion] = useState<string | null>(null);
+
+  function openAI(question?: string) {
+    setAiQuestion(question ?? null);
+    setAiSeq((n) => n + 1);
+    setAiOpen(true);
+  }
   const {
     you,
     visitors,
@@ -50,6 +64,7 @@ export default function ChatPopup() {
           onSteam={enableSteam}
           onClose={() => setOpen(false)}
           onMinimize={() => setOpen(false)}
+          onOpenAI={openAI}
         />
       ) : (
         <button
@@ -91,6 +106,15 @@ export default function ChatPopup() {
             </span>
           )}
         </button>
+      )}
+
+      {/* Dedicated AI chat window — opened by the "/ai" command */}
+      {aiOpen && (
+        <AIChatWindow
+          key={aiSeq}
+          initialQuestion={aiQuestion}
+          onClose={() => setAiOpen(false)}
+        />
       )}
     </div>
   );
