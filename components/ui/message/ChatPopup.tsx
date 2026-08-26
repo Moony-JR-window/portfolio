@@ -4,6 +4,7 @@ import { useChat } from "@/hooks/useChat";
 import { useState } from "react";
 import ChatWindow from "./ChatWindow";
 import AIChatWindow from "./AIChatWindow";
+import QaWindow from "./QaWindow";
 import Notification from"./Notification"
 
 export default function ChatPopup() {
@@ -21,6 +22,9 @@ export default function ChatPopup() {
     setAiSeq((n) => n + 1);
     setAiOpen(true);
   }
+
+  // ---- Dedicated Excel QA window ("/qa" command) ----
+  const [qaOpen, setQaOpen] = useState(false);
   const {
     you,
     visitors,
@@ -65,6 +69,7 @@ export default function ChatPopup() {
           onClose={() => setOpen(false)}
           onMinimize={() => setOpen(false)}
           onOpenAI={openAI}
+          onOpenQA={() => setQaOpen(true)}
         />
       ) : (
         <button
@@ -114,6 +119,14 @@ export default function ChatPopup() {
           key={aiSeq}
           initialQuestion={aiQuestion}
           onClose={() => setAiOpen(false)}
+        />
+      )}
+
+      {/* Dedicated Excel QA window — opened by the "/qa" command */}
+      {qaOpen && (
+        <QaWindow
+          key={`qa-${aiSeq}`}
+          onClose={() => setQaOpen(false)}
         />
       )}
     </div>

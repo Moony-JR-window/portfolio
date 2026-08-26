@@ -6,6 +6,7 @@ interface Props {
     onOpenBot: () => void;
     onCloseBot: () => void;
     onAI?: () => void;
+    onQA?: () => void;
 }
 
 const itemStyle: React.CSSProperties = {
@@ -23,6 +24,7 @@ export default function BotCommandMenu({
     onOpenBot,
     onCloseBot,
     onAI,
+    onQA,
 }: Props) {
     if (!showCommands && !showBotMenu) return null;
 
@@ -86,6 +88,29 @@ export default function BotCommandMenu({
                         }}
                     >
                         Ask anything — type /ai &lt;question&gt; (free AI)
+                    </div>
+                </button>
+
+                <button
+                    className=" bg-gray-700 "
+                    onClick={onQA}
+                    style={{
+                        width: "100%",
+                        border: "none",
+                        padding: 12,
+                        cursor: "pointer",
+                        textAlign: "left",
+                    }}
+                >
+                    <div style={{ fontWeight: 600 }}>📊 Excel QA</div>
+                    <div
+                        style={{
+                            fontSize: 12,
+                            color: "#777",
+                            marginTop: 4,
+                        }}
+                    >
+                        Unmerge + rename Service_Name — type /qa
                     </div>
                 </button>
                 </>

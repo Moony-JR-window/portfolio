@@ -21,6 +21,8 @@ interface Props {
   onSteam: () => void;
   /** Open the dedicated AI chat window ("/ai" command); optional first question. */
   onOpenAI: (question?: string) => void;
+  /** Open the dedicated Excel QA window ("/qa" command). */
+  onOpenQA: () => void;
   onClose: () => void;
   onMinimize: () => void;
 }
@@ -37,6 +39,7 @@ export default function ChatWindow({
   steamEnabled,
   onSteam,
   onOpenAI,
+  onOpenQA,
   onClose,
   onMinimize,
 }: Props) {
@@ -132,6 +135,15 @@ export default function ChatWindow({
         // question typed after "/ai" so it is asked there right away.
         const question = text.replace(/^\/ai\s*/i, "").trim();
         onOpenAI(question || undefined);
+        return;
+      }
+
+      if (lower === "/qa" || lower.startsWith("/qa ")) {
+        setDraft("");
+        onTyping(false);
+        setShowCommands(false);
+        // Open the dedicated Excel QA window (unmerge + Service_Name rename).
+        onOpenQA();
         return;
       }
 
@@ -540,6 +552,21 @@ export default function ChatWindow({
                   if (!input) return;
                   input.focus();
                   const len = input.value.length || "/ai ".length;
+                  try {
+                    input.setSelectionRange(len, len);
+                  } catch {
+                    /* best effort */
+                  }
+                });
+              }}
+              onQA={() => {
+                setShowCommands(false);
+                setDraft("/qa");
+                requestAnimationFrame(() => {
+                  const input = messageInputRef.current;
+                  if (!input) return;
+                  input.focus();
+                  const len = input.value.length || 3;
                   try {
                     input.setSelectionRange(len, len);
                   } catch {
