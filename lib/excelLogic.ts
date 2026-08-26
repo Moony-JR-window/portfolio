@@ -149,14 +149,50 @@ function decodeAddr(a: string): { r: number; c: number } {
   return { c, r: Number(m?.[2] || 1) };
 }
 
+/**
+ * Flatten an ExcelJS cell value to plain text for display/matching only.
+ * ExcelJS models rich-text runs, hyperlinks, formula results and dates as
+ * objects — without this, previews would render "[object Object]", header
+ * detection could miss `Service_Name`, and rename matching would fail.
+ * The underlying workbook keeps its real values and formatting untouched.
+ */
+export function cellValueToPlainText(value: unknown): unknown {
+  if (value === null || value === undefined) return "";
+  if (value instanceof Date) {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return (
+      `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())} ` +
+      `${pad(value.getHours())}:${pad(value.getMinutes())}:${pad(value.getSeconds())}`
+    );
+  }
+  if (typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    if (Array.isArray(obj.richText)) {
+      return (obj.richText as Array<{ text?: string }>)
+        .map((run) => (run && typeof run.text === "string" ? run.text : ""))
+        .join("");
+    }
+    if (typeof obj.text === "string" && typeof obj.hyperlink === "string") {
+      return obj.text; // hyperlink cell -> its label text
+    }
+    if (obj.result !== undefined) {
+      return cellValueToPlainText(obj.result); // formula -> its cached result
+    }
+    if (obj.error !== undefined) {
+      const err = obj.error as { message?: unknown };
+      return err && err.message !== undefined ? String(err.message) : "#ERROR";
+    }
+  }
+  return value;
+}
+
 /** Read a whole worksheet into a nested array ('' for empty cells). */
 export function sheetToAoa(ws: ExcelJS.Worksheet): unknown[][] {
   const rows: unknown[][] = [];
   ws.eachRow({ includeEmpty: true }, (row, rowNumber) => {
     const arr: unknown[] = [];
     for (let c = 1; c <= row.cellCount; c++) {
-      const v = row.getCell(c).value;
-      arr.push(v === undefined || v === null ? "" : v);
+      arr.push(cellValueToPlainText(row.getCell(c).value));
     }
     rows[rowNumber - 1] = arr;
   });
@@ -216,9 +252,7 @@ export function findServiceNameColumn(
   const cols = row.cellCount || (ws.columnCount || 0);
   for (let c = 1; c <= cols; c++) {
     const cell = row.getCell(c);
-    const header = String(
-      cell.value === undefined || cell.value === null ? "" : cell.value
-    ).trim();
+    const header = String(cellValueToPlainText(cell.value)).trim();
     if (header === "Service_Name") return c;
     if (normalizeTextKey(header) === normalizeTextKey("Service_Name")) return c;
   }
@@ -241,13 +275,10 @@ export function renameServiceNameColumn(
   let count = 0;
   for (let r = headerRow + 1; r <= ws.rowCount; r++) {
     const cell = ws.getCell(r, serviceCol);
-    const oldVal = cell.value;
-    const newVal = normalizeServiceName(
-      oldVal === undefined || oldVal === null ? oldVal : String(oldVal)
-    );
+    const raw = cellValueToPlainText(cell.value);
+    const newVal = normalizeServiceName(raw);
 
-    const oldText =
-      oldVal === undefined || oldVal === null ? "" : String(oldVal).trim();
+    const oldText = raw === "" ? "" : String(raw).trim();
     const newText = newVal === null || newVal === undefined ? "" : String(newVal).trim();
 
     if (oldText !== newText) {
