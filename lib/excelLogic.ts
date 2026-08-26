@@ -419,6 +419,7 @@ export async function processWorkbook(
   // Resolve the requested sheet; fall back to the first sheet.
   const selected = sheetNames.includes(sheetName) ? sheetName : sheetNames[0];
   const origWs = wb.getWorksheet(selected);
+  if (!origWs) return fail(`Sheet "${selected}" could not be opened.`);
   const origAoa = sheetToAoa(origWs);
 
   // Auto-detect the real header row (the row that has Service_Name), falling
@@ -434,15 +435,15 @@ export async function processWorkbook(
     unmergedRanges += unmergeWorksheet(ws);
   }
 
-  // 2. Rename SERVICE_NAME on the selected sheet (after unmerge).
-  const fixedWs = wb.getWorksheet(selected);
+  // 2. Rename SERVICE_NAME on the selected sheet (after unmerge). ExcelJS
+  // returns the same worksheet instance, so reuse the guarded reference.
   const { count, serviceCol } = renameServiceNameColumn(
-    fixedWs,
+    origWs,
     effectiveHeaderRow
   );
   const renameCount = count >= 0 ? count : 0;
 
-  const fixedAoa = sheetToAoa(fixedWs);
+  const fixedAoa = sheetToAoa(origWs);
 
   const original = buildPreviewMatrix(
     origAoa,
