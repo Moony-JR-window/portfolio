@@ -1,4 +1,4 @@
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 
 /**
  * excelLogic.ts — a faithful TypeScript port of the QA logic in
@@ -13,6 +13,10 @@ import * as XLSX from "xlsx";
  *      below the header row).
  *   3. Expose preview rows (Original before unmerge | Fixed after unmerge +
  *      rename) so a UI can compare them side-by-side.
+ *
+ * Processing & export use ExcelJS so that the original workbook's formatting
+ * (fill colours, fonts, borders, row heights, column widths) is preserved —
+ * the free SheetJS build cannot serialise cell styles back to .xlsx.
  */
 
 // ---------------------------------------------------------------
@@ -107,59 +111,113 @@ export function normalizeServiceName(value: unknown): string | null {
   // 5. Unknown value: keep the original cleaned text.
   return text;
 }
-interface IndexRange {
-  s: { r: number; c: number };
-  e: { r: number; c: number };
+/** A simple 1-based rectangular range helper for ExcelJS addresses. */
+interface CellRange {
+  top: number;
+  left: number;
+  bottom: number;
+  right: number;
+}
+
+function colToLetters(n: number): string {
+  let s = "";
+  n = n - 1;
+  while (n >= 0) {
+    s = String.fromCharCode(65 + (n % 26)) + s;
+    n = Math.floor(n / 26) - 1;
+  }
+  return s;
+}
+
+export function encodeRange(m: CellRange): string {
+  return (
+    colToLetters(m.left) + m.top + ":" + colToLetters(m.right) + m.bottom
+  );
+}
+
+export function parseRange(addr: unknown): CellRange {
+  const [a = "", b] = String(addr).split(":");
+  const tl = decodeAddr(a);
+  const br = decodeAddr(b || a);
+  return { top: tl.r, left: tl.c, bottom: br.r, right: br.c };
+}
+
+function decodeAddr(a: string): { r: number; c: number } {
+  const m = /([A-Z]+)(\d+)/.exec(a);
+  let c = 0;
+  for (const ch of m?.[1] || "A") c = c * 26 + (ch.charCodeAt(0) - 64);
+  return { c, r: Number(m?.[2] || 1) };
+}
+
+/** Read a whole worksheet into a nested array ('' for empty cells). */
+export function sheetToAoa(ws: ExcelJS.Worksheet): unknown[][] {
+  const rows: unknown[][] = [];
+  ws.eachRow({ includeEmpty: true }, (row, rowNumber) => {
+    const arr: unknown[] = [];
+    for (let c = 1; c <= row.cellCount; c++) {
+      const v = row.getCell(c).value;
+      arr.push(v === undefined || v === null ? "" : v);
+    }
+    rows[rowNumber - 1] = arr;
+  });
+  return rows;
 }
 
 /**
- * Unmerge every merged range in a worksheet and fill each opened cell with the
- * original top-left value. Returns the number of merged ranges removed.
- * Mirrors `_unmerge_workbook` for a single sheet.
+ * Unmerge every merged range in an ExcelJS worksheet and fill each opened cell
+ * with the original top-left value AND style (so colours/borders survive).
+ * Returns the number of merged ranges removed. Mirrors `_unmerge_workbook`.
  */
-export function unmergeWorksheet(ws: XLSX.WorkSheet): number {
-  const merges = (ws["!merges"] || []) as IndexRange[];
+export function unmergeWorksheet(ws: ExcelJS.Worksheet): number {
+  const merges = (ws.model.merges || []).slice();
   if (!merges.length) return 0;
 
-  let removed = 0;
-  for (const range of merges) {
-    const minC = range.s.c;
-    const minR = range.s.r;
-    const maxC = range.e.c;
-    const maxR = range.e.r;
+  const ranges = merges.map(parseRange);
+  ws.model.merges = [];
 
-    const topLeft = ws[XLSX.utils.encode_cell({ r: minR, c: minC })];
-    const value = topLeft ? topLeft.v : undefined;
-
-    for (let r = minR; r <= maxR; r++) {
-      for (let c = minC; c <= maxC; c++) {
-        const addr = XLSX.utils.encode_cell({ r, c });
-        const t = topLeft?.t ?? (typeof value === "number" ? "n" : "s");
-        ws[addr] = {
-          t,
-          v: value as unknown,
-          ...(topLeft?.s ? { s: topLeft.s } : {}),
-        };
+  for (const m of ranges) {
+    const master = ws.getCell(m.top, m.left);
+    const value = master.value;
+    const style: Record<string, unknown> = {};
+    for (const p of [
+      "fill",
+      "font",
+      "alignment",
+      "border",
+      "numFmt",
+      "protection",
+      "dataValidation",
+    ] as const) {
+      if ((master as unknown as Record<string, unknown>)[p] !== undefined) {
+        style[p] = (master as unknown as Record<string, unknown>)[p];
       }
     }
-    removed++;
+
+    ws.unMergeCells(encodeRange(m));
+
+    for (let r = m.top; r <= m.bottom; r++) {
+      for (let c = m.left; c <= m.right; c++) {
+        const cell = ws.getCell(r, c);
+        Object.assign(cell, style);
+        cell.value = value;
+      }
+    }
   }
 
-  ws["!merges"] = [];
-  return removed;
+  return ranges.length;
 }
 
-/** Find the `Service_Name` column index (0-based) from the header row. */
+/** Find the `Service_Name` column index (1-based) from the header row. */
 export function findServiceNameColumn(
-  ws: XLSX.WorkSheet,
+  ws: ExcelJS.Worksheet,
   headerRow: number
 ): number | null {
-  const range = XLSX.utils.decode_range(ws["!ref"] || "A1:A1");
-  for (let c = range.s.c; c <= range.e.c; c++) {
-    const cell = ws[XLSX.utils.encode_cell({ r: headerRow - 1, c })];
-    if (!cell) continue;
+  const row = ws.getRow(headerRow);
+  const cols = row.cellCount || (ws.columnCount || 0);
+  for (let c = 1; c <= cols; c++) {
+    const cell = row.getCell(c);
     const header = String(
-      cell.v === null || cell.v === undefined ? "" : cell.v
+      cell.value === undefined || cell.value === null ? "" : cell.value
     ).trim();
     if (header === "Service_Name") return c;
     if (normalizeTextKey(header) === normalizeTextKey("Service_Name")) return c;
@@ -170,39 +228,30 @@ export function findServiceNameColumn(
 /**
  * Rename every Service_Name value below the header row on the selected sheet.
  * Mirrors `_fix_service_name_column`. Returns the number of renamed cells
- * (or -1 when no Service_Name column is found).
+ * (or -1 when no Service_Name column is found). Setting `cell.value` keeps the
+ * cell's existing style.
  */
 export function renameServiceNameColumn(
-  ws: XLSX.WorkSheet,
+  ws: ExcelJS.Worksheet,
   headerRow: number
 ): { count: number; serviceCol: number | null } {
   const serviceCol = findServiceNameColumn(ws, headerRow);
   if (serviceCol === null) return { count: -1, serviceCol: null };
 
   let count = 0;
-  const range = XLSX.utils.decode_range(ws["!ref"] || "A1:A1");
-
-  for (let r = headerRow; r <= range.e.r; r++) {
-    const addr = XLSX.utils.encode_cell({ r, c: serviceCol });
-    const cell = ws[addr];
-    const oldVal = cell ? cell.v : null;
-    const newVal = normalizeServiceName(oldVal);
+  for (let r = headerRow + 1; r <= ws.rowCount; r++) {
+    const cell = ws.getCell(r, serviceCol);
+    const oldVal = cell.value;
+    const newVal = normalizeServiceName(
+      oldVal === undefined || oldVal === null ? oldVal : String(oldVal)
+    );
 
     const oldText =
-      oldVal === null || oldVal === undefined ? "" : String(oldVal).trim();
-    const newText = newVal === null ? "" : String(newVal).trim();
+      oldVal === undefined || oldVal === null ? "" : String(oldVal).trim();
+    const newText = newVal === null || newVal === undefined ? "" : String(newVal).trim();
 
     if (oldText !== newText) {
-      if (!cell) {
-        ws[addr] = {
-          t: typeof newVal === "number" ? "n" : "s",
-          v: newVal as unknown,
-        };
-      } else {
-        cell.v = newVal;
-        if (typeof newVal === "number") cell.t = "n";
-        else if (!cell.t) cell.t = "s";
-      }
+      cell.value = newVal;
       count++;
     }
   }
@@ -225,6 +274,29 @@ export function makeUniqueHeaders(headers: string[]): string[] {
     }
   }
   return out;
+}
+
+/**
+ * Auto-detect the header row (1-based) by scanning the sheet for the row that
+ * actually contains the `Service_Name` header. Real files often have a dummy
+ * first row (e.g. reporting labels) with the real header below it, so relying
+ * only on the user-provided row causes the rename to be silently skipped.
+ * Falls back to the preferred row when no `Service_Name` cell is found.
+ */
+export function detectServiceHeaderRow(
+  aoa: unknown[][],
+  preferredHeaderRow: number
+): number {
+  const target = normalizeTextKey("Service_Name");
+  for (let r = 0; r < aoa.length; r++) {
+    const row = aoa[r] || [];
+    for (let c = 0; c < row.length; c++) {
+      const v = row[c];
+      if (v === null || v === undefined) continue;
+      if (normalizeTextKey(v) === target) return r + 1; // convert to 1-based
+    }
+  }
+  return Math.max(1, preferredHeaderRow);
 }
 
 export type PreviewRows = string[][];
@@ -274,22 +346,26 @@ export interface QaResult {
   renameCount: number;
   original: PreviewSet;
   fixed: PreviewSet;
-  wb: XLSX.WorkBook | null;
+  wb: ExcelJS.Workbook | null;
 }
 /**
  * Run the full QA pipeline on a workbook buffer. Mirrors the `process_record`
  * core of excel_rename.py: unmerge all sheets, then rename SERVICE_NAME on the
  * selected sheet, and return bounded previews for both the original and fixed
  * views plus a reference to the processed workbook (used to export).
+ *
+ * Uses ExcelJS so the original formatting (fill colours, fonts, borders, row
+ * heights, column widths) is preserved in the exported file.
  */
-export function processWorkbook(
+export async function processWorkbook(
   buffer: ArrayBuffer,
   sheetName: string,
   headerRow: number,
   maxPreviewRows = 60
-): QaResult {
-  const wb = XLSX.read(buffer, { type: "buffer" });
-  const sheetNames = wb.SheetNames;
+): Promise<QaResult> {
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(buffer);
+  const sheetNames = wb.worksheets.map((ws) => ws.name);
 
   const fail = (message: string): QaResult => ({
     ok: false,
@@ -311,43 +387,49 @@ export function processWorkbook(
 
   // Resolve the requested sheet; fall back to the first sheet.
   const selected = sheetNames.includes(sheetName) ? sheetName : sheetNames[0];
+  const origWs = wb.getWorksheet(selected);
+  const origAoa = sheetToAoa(origWs);
 
-  const origWs = wb.Sheets[selected];
-  const origAoa = XLSX.utils.sheet_to_json(origWs, {
-    header: 1,
-    raw: true,
-    defval: "",
-  }) as unknown[][];
+  // Auto-detect the real header row (the row that has Service_Name), falling
+  // back to the user-provided (or default) row when it isn't found.
+  const effectiveHeaderRow = detectServiceHeaderRow(
+    origAoa,
+    Math.max(1, headerRow)
+  );
 
-  // 1. Unmerge every merged range (all sheets), fill top-left values.
+  // 1. Unmerge every merged range (all sheets), fill top-left values+styles.
   let unmergedRanges = 0;
-  for (const name of wb.SheetNames) {
-    const ws = wb.Sheets[name];
-    if (ws) unmergedRanges += unmergeWorksheet(ws);
+  for (const ws of wb.worksheets) {
+    unmergedRanges += unmergeWorksheet(ws);
   }
 
   // 2. Rename SERVICE_NAME on the selected sheet (after unmerge).
-  const fixedWs = wb.Sheets[selected];
-  const { count, serviceCol } = renameServiceNameColumn(fixedWs, headerRow);
+  const fixedWs = wb.getWorksheet(selected);
+  const { count, serviceCol } = renameServiceNameColumn(
+    fixedWs,
+    effectiveHeaderRow
+  );
   const renameCount = count >= 0 ? count : 0;
 
-  const fixedAoa = XLSX.utils.sheet_to_json(fixedWs, {
-    header: 1,
-    raw: true,
-    defval: "",
-  }) as unknown[][];
+  const fixedAoa = sheetToAoa(fixedWs);
 
-  const original = buildPreviewMatrix(origAoa, headerRow, maxPreviewRows);
-  const fixed = buildPreviewMatrix(fixedAoa, headerRow, maxPreviewRows);
+  const original = buildPreviewMatrix(
+    origAoa,
+    effectiveHeaderRow,
+    maxPreviewRows
+  );
+  const fixed = buildPreviewMatrix(fixedAoa, effectiveHeaderRow, maxPreviewRows);
 
   const fixedRowsLen =
-    headerRow - 1 < fixedAoa.length ? fixedAoa.length - headerRow : 0;
+    effectiveHeaderRow - 1 < fixedAoa.length
+      ? fixedAoa.length - effectiveHeaderRow
+      : 0;
 
   return {
     ok: true,
     sheetNames,
     sheetName: selected,
-    headerRow,
+    headerRow: effectiveHeaderRow,
     totalRows: fixedRowsLen,
     previewRows: fixed.rows.length,
     unmergedRanges,
@@ -360,6 +442,10 @@ export function processWorkbook(
 }
 
 /** Serialize the (already processed) workbook to a base64 .xlsx string. */
-export function workbookToBase64(wb: XLSX.WorkBook): string {
-  return XLSX.write(wb, { type: "base64", bookType: "xlsx" });
+export async function workbookToBase64(wb: ExcelJS.Workbook): Promise<string> {
+  const buf = await wb.xlsx.writeBuffer();
+  const bytes = new Uint8Array(buf as ArrayBuffer);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin);
 }

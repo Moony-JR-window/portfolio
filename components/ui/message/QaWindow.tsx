@@ -272,15 +272,19 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
     setSheetNames([]);
     setSelectedSheet("");
     setFile(next);
+// Auto-run once on pick so sheets populate + the default sheet is already
+    // processed (sheet "" = server picks the first sheet).
+    void runQa(next, "");
   }
-  async function runQa() {
-    if (!file) return;
+  async function runQa(fileArg?: File, sheetArg?: string) {
+    const targetFile = fileArg ?? file;
+    if (!targetFile) return;
     setBusy(true);
     setError(null);
     try {
       const body = new FormData();
-      body.append("file", file);
-      body.append("sheet", selectedSheet);
+      body.append("file", targetFile);
+      body.append("sheet", sheetArg ?? selectedSheet);
       body.append("headerRow", headerRowStr);
 
       const res = await fetch("/api/qa", { method: "POST", body });
@@ -310,6 +314,8 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
 
       setSheetNames(json.sheetNames);
       setSelectedSheet(json.sheetName);
+      // Reflect the auto-detected header row so the user sees where it landed.
+      setHeaderRowStr(String(json.headerRow));
       setActiveTab("fixed");
       setData({
         fileName: json.fileName,
@@ -484,7 +490,12 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
               Sheet:
               <select
                 value={selectedSheet}
-                onChange={(e) => setSelectedSheet(e.target.value)}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setSelectedSheet(v);
+                  // Auto re-run QA for the newly selected sheet.
+                  void runQa(file, v);
+                }}
                 disabled={!sheetNames.length}
                 style={inputStyle}
               >
@@ -512,7 +523,7 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
             </label>
 
             <button
-              onClick={runQa}
+              onClick={() => void runQa(file, selectedSheet)}
               disabled={busy}
               style={{
                 marginLeft: "auto",

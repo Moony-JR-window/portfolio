@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
     if (!Number.isFinite(headerRow) || headerRow < 1) headerRow = 1;
 
     const buffer = await file.arrayBuffer();
-    const result = processWorkbook(buffer, sheetName, headerRow);
+    const result = await processWorkbook(buffer, sheetName, headerRow);
 
     if (!result.ok || !result.wb) {
       return NextResponse.json(
@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const fixedBase64 = workbookToBase64(result.wb);
+    const fixedBase64 = await workbookToBase64(result.wb);
 
     return NextResponse.json({
       success: true,
