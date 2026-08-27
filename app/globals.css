@@ -385,3 +385,24 @@
 }
 .slide-out-left { opacity: 0; transform: translateX(-24px); }
 .slide-out-right { opacity: 0; transform: translateX(24px); }
+
+/* ===== Mobile input zoom guard =====
+   iOS Safari auto-zooms the page whenever a focused form control has a
+   computed font-size below 16px. The chat message box uses 14px and the QA
+   window controls 12px, so tapping them "zoomed in" and looked like a broken
+   responsive layout. Force >=16px on narrow screens / touch devices only;
+   desktop keeps its current sizes. !important is required to win over the
+   inline style={{ fontSize: ... }} values used by the chat windows. */
+@media (max-width: 767.98px), (pointer: coarse) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='button']):not([type='submit']):not([type='reset']),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Stop Safari's automatic text inflation when rotating to landscape. */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
