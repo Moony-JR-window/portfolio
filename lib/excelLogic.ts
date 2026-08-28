@@ -11,8 +11,9 @@ import ExcelJS from "exceljs";
  *   2. Rename the `Service_Name` column on the selected sheet using
  *      SERVICE_KEYS (mirrors `_normalize_service_name`, applied to each row
  *      below the header row).
- *   3. Expose preview rows (Original before unmerge | Fixed after unmerge +
- *      rename) so a UI can compare them side-by-side.
+ *   3. Expose preview rows (Original = the workbook exactly as uploaded, with
+ *      merged cells blank like excel_rename.py's pandas preview | Fixed after
+ *      unmerge + rename) so a UI can compare them side-by-side.
  *
  * Processing & export use ExcelJS so that the original workbook's formatting
  * (fill colours, fonts, borders, row heights, column widths) is preserved —
@@ -159,6 +160,9 @@ function decodeAddr(a: string): { r: number; c: number } {
 export function cellValueToPlainText(value: unknown): unknown {
   if (value === null || value === undefined) return "";
   if (value instanceof Date) {
+    // ExcelJS can surface invalid Dates (e.g. the 1900-epoch quirk); render
+    // those as blank instead of "NaN-NaN-NaN NaN:NaN:NaN".
+    if (Number.isNaN(value.getTime())) return "";
     const pad = (n: number) => String(n).padStart(2, "0");
     return (
       `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())} ` +
@@ -186,13 +190,31 @@ export function cellValueToPlainText(value: unknown): unknown {
   return value;
 }
 
-/** Read a whole worksheet into a nested array ('' for empty cells). */
-export function sheetToAoa(ws: ExcelJS.Worksheet): unknown[][] {
+/**
+ * Read a whole worksheet into a nested array ('' for empty cells).
+ *
+ * By default ExcelJS aliases a merged cell's value to its master, so every
+ * cell inside a merged range reads back with the top-left value — the right
+ * shape for reading the *fixed* data. Pass `blankMergedCells: true` to report
+ * merged (non-master) cells as '' instead, exactly how the value is stored in
+ * the uploaded file and how excel_rename.py's original preview shows it via
+ * pandas/openpyxl (value only in the top-left cell of each merge).
+ */
+export function sheetToAoa(
+  ws: ExcelJS.Worksheet,
+  opts: { blankMergedCells?: boolean } = {}
+): unknown[][] {
+  const blankMerged = opts.blankMergedCells === true;
   const rows: unknown[][] = [];
   ws.eachRow({ includeEmpty: true }, (row, rowNumber) => {
     const arr: unknown[] = [];
     for (let c = 1; c <= row.cellCount; c++) {
-      arr.push(cellValueToPlainText(row.getCell(c).value));
+      const cell = row.getCell(c);
+      if (blankMerged && cell.type === ExcelJS.ValueType.Merge) {
+        arr.push(""); // merged slave cell — has no stored value of its own
+      } else {
+        arr.push(cellValueToPlainText(cell.value));
+      }
     }
     rows[rowNumber - 1] = arr;
   });
@@ -209,7 +231,9 @@ export function unmergeWorksheet(ws: ExcelJS.Worksheet): number {
   if (!merges.length) return 0;
 
   const ranges = merges.map(parseRange);
-  ws.model.merges = [];
+  // NOTE: `unMergeCells` below is what actually clears the merge registry —
+  // `ws.model.merges = []` would be a no-op (the `model` getter builds a
+  // fresh throw-away object, so the assignment is silently lost).
 
   for (const m of ranges) {
     const master = ws.getCell(m.top, m.left);
@@ -243,18 +267,29 @@ export function unmergeWorksheet(ws: ExcelJS.Worksheet): number {
   return ranges.length;
 }
 
+/**
+ * Header-key normalization for `Service_Name` matching: `_` and ` ` are
+ * equivalent, so `Service_Name`, `Service Name`, `service_name`, etc. all
+ * match. Real templates often spell the header with a plain space, which
+ * previously made header detection and the rename silently skip.
+ */
+function normalizeHeaderKey(value: unknown): string {
+  return normalizeTextKey(value).replace(/_/g, " ");
+}
+
 /** Find the `Service_Name` column index (1-based) from the header row. */
 export function findServiceNameColumn(
   ws: ExcelJS.Worksheet,
   headerRow: number
 ): number | null {
+  const target = normalizeHeaderKey("Service_Name");
   const row = ws.getRow(headerRow);
   const cols = row.cellCount || (ws.columnCount || 0);
   for (let c = 1; c <= cols; c++) {
     const cell = row.getCell(c);
     const header = String(cellValueToPlainText(cell.value)).trim();
     if (header === "Service_Name") return c;
-    if (normalizeTextKey(header) === normalizeTextKey("Service_Name")) return c;
+    if (normalizeHeaderKey(header) === target) return c;
   }
   return null;
 }
@@ -318,13 +353,13 @@ export function detectServiceHeaderRow(
   aoa: unknown[][],
   preferredHeaderRow: number
 ): number {
-  const target = normalizeTextKey("Service_Name");
+  const target = normalizeHeaderKey("Service_Name");
   for (let r = 0; r < aoa.length; r++) {
     const row = aoa[r] || [];
     for (let c = 0; c < row.length; c++) {
       const v = row[c];
       if (v === null || v === undefined) continue;
-      if (normalizeTextKey(v) === target) return r + 1; // convert to 1-based
+      if (normalizeHeaderKey(v) === target) return r + 1; // convert to 1-based
     }
   }
   return Math.max(1, preferredHeaderRow);
@@ -382,8 +417,9 @@ export interface QaResult {
 /**
  * Run the full QA pipeline on a workbook buffer. Mirrors the `process_record`
  * core of excel_rename.py: unmerge all sheets, then rename SERVICE_NAME on the
- * selected sheet, and return bounded previews for both the original and fixed
- * views plus a reference to the processed workbook (used to export).
+ * selected sheet, and return bounded previews for the original view (the
+ * workbook exactly as uploaded — merged cells blank) and the fixed view, plus
+ * a reference to the processed workbook (used to export).
  *
  * Uses ExcelJS so the original formatting (fill colours, fonts, borders, row
  * heights, column widths) is preserved in the exported file.
@@ -420,12 +456,20 @@ export async function processWorkbook(
   const selected = sheetNames.includes(sheetName) ? sheetName : sheetNames[0];
   const origWs = wb.getWorksheet(selected);
   if (!origWs) return fail(`Sheet "${selected}" could not be opened.`);
-  const origAoa = sheetToAoa(origWs);
+
+  // "Original" preview must show the workbook exactly as uploaded. ExcelJS
+  // aliases merged (non-master) cells to their master's value when read, so
+  // blank those cells here — the value stays only in the top-left cell of
+  // each merge, matching what excel_rename.py's pandas preview shows.
+  const origAoa = sheetToAoa(origWs, { blankMergedCells: true });
 
   // Auto-detect the real header row (the row that has Service_Name), falling
-  // back to the user-provided (or default) row when it isn't found.
+  // back to the user-provided (or default) row when it isn't found. Detection
+  // uses the value-aliased capture so a header hidden inside a merged range
+  // is still found.
+  const detectAoa = sheetToAoa(origWs);
   const effectiveHeaderRow = detectServiceHeaderRow(
-    origAoa,
+    detectAoa,
     Math.max(1, headerRow)
   );
 

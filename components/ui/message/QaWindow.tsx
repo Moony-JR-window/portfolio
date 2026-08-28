@@ -630,6 +630,9 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
             >
               Preview shows first {data.previewRows} data row
               {data.previewRows === 1 ? "" : "s"} — full workbook is exported.
+              <br />
+              Original = file as uploaded (merged cells blank) · Fixed =
+              unmerged + renamed.
             </div>
           </div>
 
