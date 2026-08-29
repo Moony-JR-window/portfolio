@@ -6,6 +6,11 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  // The /api/qa/ai-fix route reads the CORRECT reference template at runtime
+  // (lib/qaAgent.ts), so ship excel_data/** with the serverless function.
+  outputFileTracingIncludes: {
+    "/api/qa/ai-fix": ["./excel_data/**"],
+  },
   async headers() {
     return [
       {

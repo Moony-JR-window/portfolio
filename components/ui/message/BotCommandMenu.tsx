@@ -110,7 +110,7 @@ export default function BotCommandMenu({
                             marginTop: 4,
                         }}
                     >
-                        Unmerge + rename Service_Name — type /qa
+                        Unmerge + rename Service_Name — AI Fix verify — type /qa
                     </div>
                 </button>
                 </>
