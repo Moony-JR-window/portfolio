@@ -579,7 +579,7 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
               animation: "qa-spin 0.8s linear infinite",
             }}
           />
-          Processing workbook…
+          Fixing ...
         </div>
       )}
 

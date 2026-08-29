@@ -9,37 +9,42 @@ from copy import copy
 
 
 # ---------------------------------------------------------
-# SERVICE_KEYS must match your Groovy SERVICES map keys
+# SERVICES must match your Groovy SERVICES map:
+#   key   = canonical Service_Name (what values rename TO)
+#   value = Groovy script path prefixes / test case ids
 # ---------------------------------------------------------
-SERVICE_KEYS = [
-    "Wing to Wing",
-    "Wing Wei Luy",
-    "Code to Wing",
-    "Own Account Transfer",
-    "Wing To World",
+SERVICES = {
+    "Wing to Wing":                            ["WingToWing/", "WingToWingTc"],
+    "Wing Wei Luy":                            ["WingWeiLuy/", "WingWeiLuyTc"],
+    "Code to Wing":                            ["CodeToWing/", "CodeToWingTc"],
+    "Own Account Transfer":                    ["OwnAccountTransfer/", "OwnAccountTransferTc"],
+    "Wing To World":                           ["WingToWorld/", "WingtoWorldTc", "WingToWorldTc"],
 
-    "Transfer to Local Bank via Bakong",
-    "Wing To Other Banks NCS",
-    "Fund Transfer - Bakong Wallet",
-    "Transfer Direct To Other Bank (ABA)",
+    "Transfer to Local Bank via Bakong":       ["WingToOtherBankLocalBankViaBakong/", "WingToOtherBank/LocalBankBakong/", "LocalBankBakongTc"],
+    "Wing To Other Banks NCS":                 ["WingToOtherBankLocalBankViaNCS/", "WingToOtherBank/WingToOtherBankNcs/", "WingToOtherBankNcsTc"],
+    "Fund Transfer - Bakong Wallet":           ["WingToOtherBankBakongWallet/", "WingToOtherBank/BakongWallet/"],
+    "Transfer Direct To Other Bank (ABA)":     ["WingToOtherBankDirectBank/", "WingToOtherBank/WingDirectTransferOtherBank/", "WingDirectTransferOtherBankTc"],
 
-    "Billpay to Other Bank (ABA)",
-    "Billpay to Angkor Hospital",
-    "Billpay to PPSHV",
-    "Billpay to Bakong Wallet",
-    "Billpay to EDC",
+    "Billpay to Other Bank (ABA)":             ["BillPayOtherBankABA/", "BillPayments/BillPayOtherBankABA/", "BillPayOtherBankABATc"],
+    "Billpay to Angkor Hospital":              ["BillPayAngkorHospital/", "BillPayments/BillPayAngkorHospital/", "BillPayAngkorHospitalTc"],
+    "Billpay to PPSHV":                        ["BillPayPPSHV/", "BillPayments/BillPayPPSHV/"],
+    "Billpay to Bakong Wallet":                ["BillPayBakongWallet/", "BillPayments/BillPayBakongWallet/"],
+    "Billpay to EDC":                          ["BillPayEDC/", "BillPayments/BillPayEDC/", "BillPayEDCTc"],
 
-    "PTU PIN",
-    "PTU Pinless",
+    "PTU PIN":                                 ["MobileTopUp/Pin/", "PTUPinTc"],
+    "PTU Pinless":                             ["MobileTopUp/PinLess/", "PTUPinlessTc"],
 
-    "QR Pay",
-    "Cash Out(Scan)",
-    "Cashout - Input Manual",
+    "QR Pay":                                  ["ScanQR/QRPay/", "ScanQR/QRPay (Scan)/", "QRPayScanTc"],
+    "Cash Out(Scan)":                          ["ScanQR/CashOut/", "ScanQR/CashOut (Scan)/", "CashOutScanTc"],
+    "Cashout - Input Manual":                  ["ScanQR/CashOutManual/", "ScanQR/CashOut (Manual)/", "CashOutManualTc"],
 
-    "KHQR(WingBank to customer other bank)",
-    "KHQR(WingBank to merchant other bank)",
-    "QR Payment KHQR Bakong Wallet",
-]
+    "KHQR(WingBank to customer other bank)":   ["ScanQR/KHQROtherBankCustomer/", "KHQROtherBankCustomerTc"],
+    "KHQR(WingBank to merchant other bank)":   ["ScanQR/KHQROtherBankMerchant/", "KHQROtherBankMerchantTc"],
+    "QR Payment KHQR Bakong Wallet":           ["ScanQR/KHQRBakongWallet/", "KHQRBakongWalletTc"],
+}
+
+# Canonical keys used to rename Service_Name values (Groovy map order).
+SERVICE_KEYS = list(SERVICES.keys())
 
 
 def normalize_text_key(value):
@@ -60,6 +65,127 @@ def normalize_text_key(value):
 SERVICE_LOOKUP = {
     normalize_text_key(key): key for key in SERVICE_KEYS
 }
+
+
+def loose_text_key(value):
+    """
+    Punctuation-insensitive lowercase key used only by the garbage
+    recovery step (5) of _normalize_service_name.
+    """
+    text = normalize_text_key(value)
+    text = re.sub(r"[^0-9a-z]+", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+# (loose_key, canonical_key) pairs for step 5 containment matching.
+SERVICE_LOOSE_LOOKUP = [
+    (loose_text_key(key), key) for key in SERVICE_KEYS
+]
+
+# A contained service key must cover at least this share of the cell
+# text before step 5 will rename it (blocks false positives such as
+# "Test QR Pay flow" matching "QR Pay").
+GARBAGE_RECOVERY_MIN_COVERAGE = 0.6
+
+
+def normalize_service_name(value):
+    """
+    Rename a raw Service_Name value to the correct SERVICES map key.
+
+    Examples:
+        Wing to Wing2      -> Wing to Wing
+        Wing to Wing 2     -> Wing to Wing
+        QR Pay2            -> QR Pay
+        PTU PIN2           -> PTU PIN
+        Billpay to EDC 2   -> Billpay to EDC
+        sdfsWing to Wing   -> Wing to Wing
+    """
+    if value is None:
+        return value
+
+    original = str(value)
+
+    text = original.replace("\u00a0", " ")
+    text = re.sub(r"\s+", " ", text)
+    text = text.strip()
+
+    if not text:
+        return text
+
+    # 1. Exact or case-insensitive/space-normalized match.
+    key = normalize_text_key(text)
+    if key in SERVICE_LOOKUP:
+        return SERVICE_LOOKUP[key]
+
+    # 2. Remove trailing number.
+    #    Wing to Wing2  -> Wing to Wing
+    #    Wing to Wing 2 -> Wing to Wing
+    no_number = re.sub(r"\s*\d+\s*$", "", text).strip()
+    key = normalize_text_key(no_number)
+
+    if key in SERVICE_LOOKUP:
+        return SERVICE_LOOKUP[key]
+
+    # 3. Remove trailing number in brackets.
+    #    Wing to Wing(2) -> Wing to Wing
+    #    Wing to Wing (2) -> Wing to Wing
+    no_bracket_number = re.sub(r"\s*\(\s*\d+\s*\)\s*$", "", text).strip()
+    key = normalize_text_key(no_bracket_number)
+
+    if key in SERVICE_LOOKUP:
+        return SERVICE_LOOKUP[key]
+
+    # 4. Prefix match with service keys.
+    #    This catches cases like QR Pay2 safely.
+    for service_key in sorted(SERVICE_KEYS, key=len, reverse=True):
+        pattern = r"^" + re.escape(service_key) + r"\s*\d+\s*$"
+
+        if re.match(pattern, text, flags=re.IGNORECASE):
+            return service_key
+
+    # 5. Garbage prefix/suffix recovery.
+    #    sdfsWing to Wing   -> Wing to Wing
+    #    sdfsCash Out(Scan) -> Cash Out(Scan)
+    #    Take the longest service key contained in the
+    #    punctuation-stripped text, but only when it covers most of
+    #    the cell so unrelated values such as "Test QR Pay flow" are
+    #    never falsely renamed.
+    loose = loose_text_key(text)
+
+    if loose:
+        best_key = None
+        best_len = 0
+
+        for loose_key, service_key in SERVICE_LOOSE_LOOKUP:
+            if (
+                loose_key
+                and loose_key in loose
+                and len(loose_key) > best_len
+            ):
+                best_key = service_key
+                best_len = len(loose_key)
+
+        if best_key and best_len >= (
+            GARBAGE_RECOVERY_MIN_COVERAGE * len(loose)
+        ):
+            return best_key
+
+    # Unknown value: keep original cleaned text.
+    return text
+
+
+def service_script_paths(value):
+    """
+    Resolve a raw Service_Name value (e.g. 'sdfsWing to Wing') to its
+    Groovy script paths from SERVICES. Returns the matched key's path
+    list, or None when the value resolves to no canonical service.
+    """
+    name = normalize_service_name(value)
+
+    if name is None:
+        return None
+
+    return SERVICES.get(name)
 
 
 class ExcelUnmergeApp(tk.Tk):
@@ -526,60 +652,10 @@ class ExcelUnmergeApp(tk.Tk):
 
     def _normalize_service_name(self, value):
         """
-        Rename Service_Name to correct SERVICES map key.
-
-        Examples:
-            Wing to Wing2      -> Wing to Wing
-            Wing to Wing 2     -> Wing to Wing
-            QR Pay2            -> QR Pay
-            PTU PIN2           -> PTU PIN
-            Billpay to EDC 2   -> Billpay to EDC
+        Rename Service_Name to the correct SERVICES map key.
+        Delegates to the module-level normalize_service_name().
         """
-        if value is None:
-            return value
-
-        original = str(value)
-
-        text = original.replace("\u00a0", " ")
-        text = re.sub(r"\s+", " ", text)
-        text = text.strip()
-
-        if not text:
-            return text
-
-        # 1. Exact or case-insensitive/space-normalized match.
-        key = normalize_text_key(text)
-        if key in SERVICE_LOOKUP:
-            return SERVICE_LOOKUP[key]
-
-        # 2. Remove trailing number.
-        #    Wing to Wing2  -> Wing to Wing
-        #    Wing to Wing 2 -> Wing to Wing
-        no_number = re.sub(r"\s*\d+\s*$", "", text).strip()
-        key = normalize_text_key(no_number)
-
-        if key in SERVICE_LOOKUP:
-            return SERVICE_LOOKUP[key]
-
-        # 3. Remove trailing number in brackets.
-        #    Wing to Wing(2) -> Wing to Wing
-        #    Wing to Wing (2) -> Wing to Wing
-        no_bracket_number = re.sub(r"\s*\(\s*\d+\s*\)\s*$", "", text).strip()
-        key = normalize_text_key(no_bracket_number)
-
-        if key in SERVICE_LOOKUP:
-            return SERVICE_LOOKUP[key]
-
-        # 4. Prefix match with service keys.
-        #    This catches cases like QR Pay2 safely.
-        for service_key in sorted(SERVICE_KEYS, key=len, reverse=True):
-            pattern = r"^" + re.escape(service_key) + r"\s*\d+\s*$"
-
-            if re.match(pattern, text, flags=re.IGNORECASE):
-                return service_key
-
-        # Unknown value: keep original cleaned text.
-        return text
+        return normalize_service_name(value)
 
     def _find_service_name_column(self, ws, header_row):
         """

@@ -8,8 +8,8 @@ import ExcelJS from "exceljs";
  *   1. Unmerge every merged range and fill each opened cell with the original
  *      top-left value (mirrors `_unmerge_workbook`; unmerge happens on ALL
  *      sheets).
- *   2. Rename the `Service_Name` column on the selected sheet using
- *      SERVICE_KEYS (mirrors `_normalize_service_name`, applied to each row
+ *   2. Rename the `Service_Name` column on the selected sheet using the
+ *      SERVICES keys (mirrors `_normalize_service_name`, applied to each row
  *      below the header row).
  *   3. Expose preview rows (Original = the workbook exactly as uploaded, with
  *      merged cells blank like excel_rename.py's pandas preview | Fixed after
@@ -21,37 +21,89 @@ import ExcelJS from "exceljs";
  */
 
 // ---------------------------------------------------------------
-// SERVICE_KEYS must match the python SERVICES map keys in excel_rename.py
+// SERVICES must match the Groovy SERVICES map (also mirrored in
+// excel_rename.py): key = canonical Service_Name (what values rename
+// TO), value = Groovy script path prefixes / test case ids.
 // ---------------------------------------------------------------
-export const SERVICE_KEYS: string[] = [
-  "Wing to Wing",
-  "Wing Wei Luy",
-  "Code to Wing",
-  "Own Account Transfer",
-  "Wing To World",
+export const SERVICES: Record<string, string[]> = {
+  "Wing to Wing": ["WingToWing/", "WingToWingTc"],
+  "Wing Wei Luy": ["WingWeiLuy/", "WingWeiLuyTc"],
+  "Code to Wing": ["CodeToWing/", "CodeToWingTc"],
+  "Own Account Transfer": ["OwnAccountTransfer/", "OwnAccountTransferTc"],
+  "Wing To World": ["WingToWorld/", "WingtoWorldTc", "WingToWorldTc"],
 
-  "Transfer to Local Bank via Bakong",
-  "Wing To Other Banks NCS",
-  "Fund Transfer - Bakong Wallet",
-  "Transfer Direct To Other Bank (ABA)",
+  "Transfer to Local Bank via Bakong": [
+    "WingToOtherBankLocalBankViaBakong/",
+    "WingToOtherBank/LocalBankBakong/",
+    "LocalBankBakongTc",
+  ],
+  "Wing To Other Banks NCS": [
+    "WingToOtherBankLocalBankViaNCS/",
+    "WingToOtherBank/WingToOtherBankNcs/",
+    "WingToOtherBankNcsTc",
+  ],
+  "Fund Transfer - Bakong Wallet": [
+    "WingToOtherBankBakongWallet/",
+    "WingToOtherBank/BakongWallet/",
+  ],
+  "Transfer Direct To Other Bank (ABA)": [
+    "WingToOtherBankDirectBank/",
+    "WingToOtherBank/WingDirectTransferOtherBank/",
+    "WingDirectTransferOtherBankTc",
+  ],
 
-  "Billpay to Other Bank (ABA)",
-  "Billpay to Angkor Hospital",
-  "Billpay to PPSHV",
-  "Billpay to Bakong Wallet",
-  "Billpay to EDC",
+  "Billpay to Other Bank (ABA)": [
+    "BillPayOtherBankABA/",
+    "BillPayments/BillPayOtherBankABA/",
+    "BillPayOtherBankABATc",
+  ],
+  "Billpay to Angkor Hospital": [
+    "BillPayAngkorHospital/",
+    "BillPayments/BillPayAngkorHospital/",
+    "BillPayAngkorHospitalTc",
+  ],
+  "Billpay to PPSHV": ["BillPayPPSHV/", "BillPayments/BillPayPPSHV/"],
+  "Billpay to Bakong Wallet": [
+    "BillPayBakongWallet/",
+    "BillPayments/BillPayBakongWallet/",
+  ],
+  "Billpay to EDC": [
+    "BillPayEDC/",
+    "BillPayments/BillPayEDC/",
+    "BillPayEDCTc",
+  ],
 
-  "PTU PIN",
-  "PTU Pinless",
+  "PTU PIN": ["MobileTopUp/Pin/", "PTUPinTc"],
+  "PTU Pinless": ["MobileTopUp/PinLess/", "PTUPinlessTc"],
 
-  "QR Pay",
-  "Cash Out(Scan)",
-  "Cashout - Input Manual",
+  "QR Pay": ["ScanQR/QRPay/", "ScanQR/QRPay (Scan)/", "QRPayScanTc"],
+  "Cash Out(Scan)": [
+    "ScanQR/CashOut/",
+    "ScanQR/CashOut (Scan)/",
+    "CashOutScanTc",
+  ],
+  "Cashout - Input Manual": [
+    "ScanQR/CashOutManual/",
+    "ScanQR/CashOut (Manual)/",
+    "CashOutManualTc",
+  ],
 
-  "KHQR(WingBank to customer other bank)",
-  "KHQR(WingBank to merchant other bank)",
-  "QR Payment KHQR Bakong Wallet",
-];
+  "KHQR(WingBank to customer other bank)": [
+    "ScanQR/KHQROtherBankCustomer/",
+    "KHQROtherBankCustomerTc",
+  ],
+  "KHQR(WingBank to merchant other bank)": [
+    "ScanQR/KHQROtherBankMerchant/",
+    "KHQROtherBankMerchantTc",
+  ],
+  "QR Payment KHQR Bakong Wallet": [
+    "ScanQR/KHQRBakongWallet/",
+    "KHQRBakongWalletTc",
+  ],
+};
+
+/** Canonical keys used to rename Service_Name values (Groovy map order). */
+export const SERVICE_KEYS: string[] = Object.keys(SERVICES);
 
 /** Normalize text for matching only; keeps real output from SERVICE_KEYS. */
 export function normalizeTextKey(value: unknown): string {
@@ -63,10 +115,32 @@ export function normalizeTextKey(value: unknown): string {
   return text.toLowerCase();
 }
 
-const SERVICE_LOOKUP: Record<string, string> = {};
+// Null-prototype so "key in SERVICE_LOOKUP" matches only real service
+// keys (a plain {} would inherit Object.prototype keys like "constructor").
+const SERVICE_LOOKUP: Record<string, string> = Object.create(null);
 for (const key of SERVICE_KEYS) {
   SERVICE_LOOKUP[normalizeTextKey(key)] = key;
 }
+
+/** Punctuation-insensitive lowercase key used by garbage recovery (step 5). */
+function looseTextKey(value: unknown): string {
+  return normalizeTextKey(value)
+    .replace(/[^0-9a-z]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// [looseKey, canonicalKey] pairs for step 5 containment matching.
+const SERVICE_LOOSE_LOOKUP: Array<[string, string]> = SERVICE_KEYS.map(
+  (key) => [looseTextKey(key), key]
+);
+
+/**
+ * A contained service key must cover at least this share of the cell text
+ * before step 5 will rename it (blocks false positives such as
+ * "Test QR Pay flow" matching "QR Pay").
+ */
+const GARBAGE_RECOVERY_MIN_COVERAGE = 0.6;
 
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -74,7 +148,9 @@ function escapeRegex(s: string): string {
 
 /**
  * Port of `_normalize_service_name`. Returns the canonical SERVICE_KEYS value,
- * or the cleaned original text when nothing matches.
+ * or the cleaned original text when nothing matches. Step 5 additionally
+ * recovers values mangled by garbage prefixes/suffixes, e.g.
+ * "sdfsWing to Wing" -> "Wing to Wing".
  */
 export function normalizeServiceName(value: unknown): string | null {
   if (value === null || value === undefined) return null;
@@ -109,9 +185,51 @@ export function normalizeServiceName(value: unknown): string | null {
     if (pattern.test(text)) return serviceKey;
   }
 
-  // 5. Unknown value: keep the original cleaned text.
+  // 5. Garbage prefix/suffix recovery. sdfsWing to Wing -> Wing to Wing.
+  //    Take the longest service key contained in the punctuation-stripped
+  //    text, but only when it covers most of the cell so unrelated values
+  //    (e.g. "Test QR Pay flow") are never falsely renamed.
+  const loose = looseTextKey(text);
+  if (loose) {
+    let bestKey: string | null = null;
+    let bestLen = 0;
+
+    for (const [looseKey, serviceKey] of SERVICE_LOOSE_LOOKUP) {
+      if (
+        looseKey &&
+        loose.includes(looseKey) &&
+        looseKey.length > bestLen
+      ) {
+        bestKey = serviceKey;
+        bestLen = looseKey.length;
+      }
+    }
+
+    if (
+      bestKey &&
+      bestLen >= GARBAGE_RECOVERY_MIN_COVERAGE * loose.length
+    ) {
+      return bestKey;
+    }
+  }
+
+  // 6. Unknown value: keep the original cleaned text.
   return text;
 }
+
+/**
+ * Resolve a raw Service_Name value (e.g. "sdfsWing to Wing") to its Groovy
+ * script paths from SERVICES. Returns the matched key's path list, or null
+ * when the value resolves to no canonical service (or the input was null).
+ */
+export function getServiceScriptPaths(value: unknown): string[] | null {
+  const name = normalizeServiceName(value);
+  if (name === null) return null;
+  return Object.prototype.hasOwnProperty.call(SERVICES, name)
+    ? SERVICES[name]
+    : null;
+}
+
 /** A simple 1-based rectangular range helper for ExcelJS addresses. */
 interface CellRange {
   top: number;
