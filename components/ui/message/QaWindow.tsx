@@ -184,10 +184,22 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
 
   // ---- AI mode: DeepSeek (key-gated) vs Free AI (anonymous) ----
   const [aiMode, setAiMode] = useState<"deepseek" | "free">("deepseek");
-  // ---- Free AI provider selector ----
+    // ---- Free AI provider selector ----
   type FreeProvider = "moonybot" | "deepseek" | "other";
   const [freeProvider, setFreeProvider] = useState<FreeProvider>("moonybot");
   const [showComingSoon, setShowComingSoon] = useState(false);
+  // Map the free-provider picker to the backend QaProvider hint that selects
+  // the actual endpoint (Groq default / DeepSeek / keyless). Only sent when the
+  // window is in anonymous Free AI mode so keyed DeepSeek still uses the access
+  // key path.
+  const providerHint: string =
+    aiMode === "free"
+      ? freeProvider === "moonybot"
+        ? "groq"
+        : freeProvider === "deepseek"
+          ? "deepseek"
+          : "pollinations"
+      : "auto";
 
   // ---- Elapsed time counter for QA / Auto Types ----
   const [elapsed, setElapsed] = useState(0);
@@ -346,10 +358,11 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
     startTimer();
     try {
       const body = new FormData();
-      body.append("file", targetFile);
+            body.append("file", targetFile);
       body.append("sheet", sheetArg ?? selectedSheet);
       body.append("headerRow", headerRowStr);
       body.append("aiMode", aiMode);
+      body.append("provider", providerHint);
       if (aiMode === "deepseek") body.append("key", key);
 
       const res = await fetch("/api/qa", { method: "POST", body });
@@ -425,10 +438,11 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
     startTimer();
     try {
       const body = new FormData();
-      body.append("file", file);
+            body.append("file", file);
       body.append("sheet", selectedSheet);
       body.append("headerRow", headerRowStr);
       body.append("aiMode", aiMode);
+      body.append("provider", providerHint);
       if (aiMode === "deepseek") body.append("key", key);
 
       const res = await fetch("/api/qa/mini-fix", { method: "POST", body });

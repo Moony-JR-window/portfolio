@@ -348,22 +348,50 @@ interface ChatChoice {
   choices?: { message?: { content?: string } }[];
 }
 
+/** Providers the QA window can explicitly select in Free AI mode. */
+export type QaProvider = "groq" | "deepseek" | "pollinations" | "auto";
+
+/** Resolve provider config. "groq" -> Groq endpoint; "deepseek" -> DeepSeek;
+ * "pollinations" -> keyless only; "auto" -> DeepSeek overrides, else Groq.
+ * Honours "use ai https://api.groq.com/openai/v1 on /qa". */
+function resolveQaConfig(providerHint: QaProvider): {
+  apiKey: string | null;
+  baseUrl: string;
+  model: string;
+} {
+  if (providerHint === "pollinations") {
+    return { apiKey: null, baseUrl: "", model: "" };
+  }
+  if (providerHint === "deepseek") {
+    return {
+      apiKey: process.env.AI_QA_API_KEY ?? process.env.AI_API_KEY ?? null,
+      baseUrl:
+        (process.env.AI_QA_BASE_URL || process.env.AI_BASE_URL || "https://api.deepseek.com").replace(/\/+$/, ""),
+      model: process.env.AI_QA_MODEL || process.env.AI_MODEL || "deepseek-chat",
+    };
+  }
+  // "groq" or "auto": prefer DeepSeek overrides if configured, else Groq.
+  const apiKey = process.env.AI_QA_API_KEY || process.env.AI_API_KEY;
+  if (apiKey) {
+    return {
+      apiKey,
+      baseUrl:
+        (process.env.AI_QA_BASE_URL || process.env.AI_BASE_URL || "https://api.groq.com/openai/v1").replace(/\/$/, ""),
+      model: process.env.AI_QA_MODEL || process.env.AI_MODEL || "openai/gpt-oss-120b",
+    };
+  }
+  return { apiKey: null, baseUrl: "", model: "" };
+}
+
 /** Ask the AI agent for a JSON verdict. Returns null when every provider fails. */
 async function askAiJson(
   system: string,
-  user: string
+  user: string,
+  providerHint: QaProvider = "auto"
 ): Promise<Record<string, unknown> | null> {
-  const apiKey = process.env.AI_QA_API_KEY || process.env.AI_API_KEY;
-  if (apiKey) {
-    const baseUrl = (
-      process.env.AI_QA_BASE_URL ||
-      process.env.AI_BASE_URL ||
-      "https://api.groq.com/openai/v1"
-    ).replace(/\/$/, "");
-    const model =
-      process.env.AI_QA_MODEL ||
-      process.env.AI_MODEL ||
-      "openai/gpt-oss-120b";
+  const cfg = resolveQaConfig(providerHint);
+  if (cfg.apiKey) {
+        const { apiKey, baseUrl, model } = cfg;
     // DeepSeek V4 defaults to thinking mode, which is slow and can exceed the
     // serverless function timeout. This strict-JSON QA job does not need it —
     // force non-thinking so requests stay fast and cheap.
@@ -372,7 +400,7 @@ async function askAiJson(
 
     // First try strict JSON mode; some models reject response_format, so
     // retry once without it before giving up on this provider. A 429
-    // (rolling TPM window) gets one timed wait-and-retry, because the batch
+    // (rolling TPM window) gets exponential backoff retries, because the batch
     // retry in aiFixRows would otherwise burn the same budget immediately.
     for (const jsonMode of [true, false]) {
       try {
@@ -396,26 +424,39 @@ async function askAiJson(
           body: JSON.stringify(body),
           signal: AbortSignal.timeout(45000),
         });
+
+        // Exponential backoff for 429/413 rate limit errors
         if (res.status === 429 || res.status === 413) {
           const errText = await res.text().catch(() => "");
           const m = errText.match(/try again in\s*([\d.]+)\s*s/i);
-          const waitSec = m
-            ? Math.min(25, Math.ceil(parseFloat(m[1]) + 1))
+          const baseWaitSec = m
+            ? Math.min(30, Math.ceil(parseFloat(m[1]) + 1))
             : 10;
-          console.log(
-            `[qaAgent] ${res.status} (TPM/request limit) — waiting ${waitSec}s`
-          );
-          await new Promise((r) => setTimeout(r, waitSec * 1000));
-          res = await fetch(`${baseUrl}/chat/completions`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${apiKey}`,
-            },
-            body: JSON.stringify(body),
-            signal: AbortSignal.timeout(45000),
-          });
+
+          // Retry up to 3 times with exponential backoff
+          for (let retry = 0; retry < 3; retry++) {
+            const waitSec = Math.min(60, baseWaitSec * Math.pow(2, retry));
+            console.log(
+              `[qaAgent] ${res.status} (TPM/request limit) — waiting ${waitSec}s (retry ${retry + 1}/3)`
+            );
+            await new Promise((r) => setTimeout(r, waitSec * 1000));
+
+            res = await fetch(`${baseUrl}/chat/completions`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${apiKey}`,
+              },
+              body: JSON.stringify(body),
+              signal: AbortSignal.timeout(45000),
+            });
+
+            if (res.status !== 429 && res.status !== 413) {
+              break; // Success or different error, exit retry loop
+            }
+          }
         }
+
         if (!res.ok) {
           console.error(
             `[qaAgent] Provider ${res.status}:`,
@@ -715,6 +756,7 @@ export async function aiFixRows(
   headers: string[],
   rows: string[][],
   profile: ReferenceProfile,
+  providerHint: QaProvider = "auto",
   maxRows = 25
 ): Promise<AiAgentResult> {
   const base: AiAgentResult = {
@@ -814,9 +856,10 @@ export async function aiFixRows(
   let raw: Record<string, unknown> | null = null;
   let lastChecked = checked;
   while (checked >= 1) {
-    raw = await askAiJson(
+            raw = await askAiJson(
       QA_SYSTEM_PROMPT,
-      buildUser(buildPayload(checked))
+      buildUser(buildPayload(checked)),
+      providerHint
     );
     if (raw) break;
     const next = Math.max(1, Math.floor(checked / 2));
@@ -896,16 +939,19 @@ interface AccountTypeVerdict {
 
 /** Ask the AI for one row's account types (configured provider, free
  *  Pollinations fallback). Returns null when the AI did not answer usable. */
-async function askAccountTypeVerdict(input: {
-  service: string;
-  text: string;
-  senderCurrency: string;
-  receiverCurrency: string;
-  currentSender: string;
-  currentReceiver: string;
-  allowedSender: string[];
-  allowedReceiver: string[];
-}): Promise<AccountTypeVerdict | null> {
+async function askAccountTypeVerdict(
+  input: {
+    service: string;
+    text: string;
+    senderCurrency: string;
+    receiverCurrency: string;
+    currentSender: string;
+    currentReceiver: string;
+    allowedSender: string[];
+    allowedReceiver: string[];
+  },
+  providerHint: QaProvider = "auto"
+): Promise<AccountTypeVerdict | null> {
   const user = [
     `Service_Name: ${input.service || "?"}`,
     `Row text: ${input.text || "?"}`,
@@ -916,7 +962,7 @@ async function askAccountTypeVerdict(input: {
     `Allowed SENDER account types: ${JSON.stringify(input.allowedSender)}`,
     `Allowed RECEIVER account types: ${JSON.stringify(input.allowedReceiver)}`,
   ].join("\n");
-  const raw = await askAiJson(ACCOUNT_TYPE_SYSTEM_PROMPT, user);
+    const raw = await askAiJson(ACCOUNT_TYPE_SYSTEM_PROMPT, user, providerHint);
   if (!raw) return null;
   const sender = String(
     raw.sender_account_type ?? raw.senderAccountType ?? ""
@@ -991,6 +1037,7 @@ export async function miniFixAccountTypes(
   headers: string[],
   rows: string[][],
   profile: ReferenceProfile,
+  providerHint: QaProvider = "auto",
   maxRows = 250
 ): Promise<AiAgentResult> {
   const base: AiAgentResult = {
@@ -1033,8 +1080,9 @@ export async function miniFixAccountTypes(
     const batch = candidates.slice(i, i + BATCH);
     const verdicts = await Promise.all(
       batch.map((c) =>
-        askAccountTypeVerdict({
-          service: c.service,
+                                askAccountTypeVerdict(
+          {
+            service: c.service,
           text: c.text,
           senderCurrency: String(
             rows[c.idx]?.[senderCurrCol ?? -1] ?? ""
@@ -1046,7 +1094,9 @@ export async function miniFixAccountTypes(
           currentReceiver: String(rows[c.idx]?.[receiverCol ?? -1] ?? "").trim(),
           allowedSender: profile.senderAccountTypes,
           allowedReceiver: profile.receiverAccountTypes,
-        })
+        },
+        providerHint
+        )
       )
     );
     verdicts.forEach((verdict, k) => {

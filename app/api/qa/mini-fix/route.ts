@@ -12,6 +12,7 @@ import {
   loadReferenceProfile,
   headerKey,
   type AiFix,
+  type QaProvider,
 } from "@/lib/qaAgent";
 import { isValidQaKey } from "@/lib/qaKey";
 
@@ -58,16 +59,16 @@ export async function POST(request: NextRequest) {
 
     // Access-key gate — skip when Free AI mode (anonymous). Default to
     // "deepseek" for backward compatibility with old clients.
-    const aiMode = String(formData.get("aiMode") || "deepseek");
+        const aiMode = String(formData.get("aiMode") || "deepseek");
     if (aiMode !== "free" && !isValidQaKey(formData.get("key"))) {
       return NextResponse.json(
-        {
-          success: false,
-          error: "Invalid or missing QA access key.",
-        },
+        { success: false, error: "Invalid or missing QA access key." },
         { status: 403 }
       );
     }
+
+    // Choose the AI provider for the account-type pass (groq/deepseek/pollinations).
+    const provider = String(formData.get("provider") || "auto") as QaProvider;
 
     const sheetName = String(formData.get("sheet") || "");
     let headerRow = Number(formData.get("headerRow"));
@@ -113,7 +114,7 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
-    const agent = await miniFixAccountTypes(headers, dataRows, profile);
+        const agent = await miniFixAccountTypes(headers, dataRows, profile, provider);
 
     // ---- 3) Apply ONLY the account-type fixes + export ----
     const colByKey = new Map<string, number>();

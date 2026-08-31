@@ -12,6 +12,7 @@ import {
   headerKey,
   loadReferenceProfile,
   type AiFix,
+  type QaProvider,
 } from "@/lib/qaAgent";
 import { isValidQaKey } from "@/lib/qaKey";
 
@@ -63,16 +64,17 @@ export async function POST(request: NextRequest) {
 
     // Access-key gate — skip when Free AI mode (anonymous). Default to
     // "deepseek" for backward compatibility with old clients.
-    const aiMode = String(formData.get("aiMode") || "deepseek");
+        const aiMode = String(formData.get("aiMode") || "deepseek");
     if (aiMode !== "free" && !isValidQaKey(formData.get("key"))) {
       return NextResponse.json(
-        {
-          success: false,
-          error: "Invalid or missing QA access key.",
-        },
+        { success: false, error: "Invalid or missing QA access key." },
         { status: 403 }
       );
     }
+
+    // Choose the AI provider for the agent pass. The window picks
+    // "groq" / "deepseek" / "pollinations" (or omit for the default auto chain).
+    const provider = String(formData.get("provider") || "auto") as QaProvider;
 
     const sheetName = String(formData.get("sheet") || "");
     let headerRow = Number(formData.get("headerRow"));
@@ -117,7 +119,7 @@ export async function POST(request: NextRequest) {
       checkedRows: 0,
     };
     if (profile) {
-      agent = await aiFixRows(headers, dataRows, profile);
+            agent = await aiFixRows(headers, dataRows, profile, provider);
     } else {
       agent.summary =
         "Reference template not readable on the server — applied rule-based fixes only.";
