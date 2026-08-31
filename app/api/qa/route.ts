@@ -44,8 +44,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Access-key gate — the /qa window requires a valid key to process files.
-    if (!isValidQaKey(formData.get("key"))) {
+    // Access-key gate — skip when Free AI mode (anonymous). Default to
+    // "deepseek" for backward compatibility with old clients.
+    const aiMode = String(formData.get("aiMode") || "deepseek");
+    if (aiMode !== "free" && !isValidQaKey(formData.get("key"))) {
       return NextResponse.json(
         {
           success: false,

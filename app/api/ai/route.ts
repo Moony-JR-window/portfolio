@@ -25,6 +25,7 @@ export const maxDuration = 60;
  * Body:
  *   { "message": "string" }                  // the user's question
  *   { "message": "…", "imageDataUrl": "…" }  // question + attached image
+ *   { "message": "string", "model": "model-id" }  // …plus a chosen AI model (optional)
  *
  * When "imageDataUrl" (an inline data:image/...;base64 URL ≤ ~6 MB) is sent,
  * a vision-capable model is used so MooNyBot can "see" the attachment.
@@ -79,7 +80,8 @@ function buildUserContent(
 /** Use the configured provider via an API key (defaults to Groq free tier). */
 async function askConfiguredProvider(
   message: string,
-  imageDataUrl?: string
+  imageDataUrl?: string,
+  modelHint?: string
 ): Promise<string | null> {
   const apiKey = process.env.AI_API_KEY;
   if (!apiKey) return null;
@@ -88,12 +90,14 @@ async function askConfiguredProvider(
     /\/$/,
     ""
   );
-  // A vision-capable free Groq model when an image is attached, otherwise a
-  // widely-available free text model with good quality/speed.
-  const model = imageDataUrl
-    ? process.env.AI_VISION_MODEL ||
-      "meta-llama/llama-4-scout-17b-16e-instruct"
-    : process.env.AI_MODEL || "openai/gpt-oss-120b";
+  // Let the UI pick the chat model. Images always need a vision-capable model
+  // so MooNyBot can "see" the attachment, so the hint is ignored for images and
+  // the configured vision model is used instead.
+  const resolvedModel = imageDataUrl
+    ? process.env.AI_VISION_MODEL || "meta-llama/llama-4-scout-17b-16e-instruct"
+    : modelHint && modelHint !== "auto" && !modelHint.startsWith("free:")
+      ? modelHint
+      : process.env.AI_MODEL || "openai/gpt-oss-120b";
 
   const res = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
@@ -102,7 +106,7 @@ async function askConfiguredProvider(
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model,
+      model: resolvedModel,
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: buildUserContent(message, imageDataUrl) },
@@ -122,10 +126,10 @@ async function askConfiguredProvider(
 /** Use free, no-key public endpoints (Pollinations). */
 async function askFreeProvider(
   message: string,
-  imageDataUrl?: string
+  imageDataUrl?: string,
+  modelHint?: string
 ): Promise<string | null> {
-  // With an image attached, try Pollinations' OpenAI-compatible endpoint,
-  // which accepts multimodal (vision) content parts on some free models.
+  // With an image attached, use the vision-capable Pollinations OpenAI endpoint.
   if (imageDataUrl) {
     try {
       const res = await fetch("https://text.pollinations.ai/openai", {
@@ -154,24 +158,18 @@ async function askFreeProvider(
     return null; // image understanding needs a real vision provider
   }
 
-  // Try a couple of keyless endpoint variants so a single block/error
-  // doesn't kill the whole request.
-  const endpoints = [
-    (q: string) => {
-      const url = new URL("https://text.pollinations.ai/" + encodeURIComponent(q));
-      url.searchParams.set("model", "openai");
-      url.searchParams.set("system", SYSTEM_PROMPT);
-      url.searchParams.set("private", "true");
-      return url.toString();
-    },
-    (q: string) => {
-      const url = new URL("https://text.pollinations.ai/" + encodeURIComponent(q));
-      url.searchParams.set("model", "mistral");
-      url.searchParams.set("system", SYSTEM_PROMPT);
-      url.searchParams.set("private", "true");
-      return url.toString();
-    },
-  ];
+    // Honour a free-model choice from the UI ("free:mistral" prefers mistral;
+  // otherwise openai). Both are still tried as a fallback so a single blocked
+  // request doesn't kill the whole call.
+  const orderedModels =
+    modelHint === "free:mistral" ? ["mistral", "openai"] : ["openai", "mistral"];
+  const endpoints = orderedModels.map((m) => (q: string) => {
+    const url = new URL("https://text.pollinations.ai/" + encodeURIComponent(q));
+    url.searchParams.set("model", m);
+    url.searchParams.set("system", SYSTEM_PROMPT);
+    url.searchParams.set("private", "true");
+    return url.toString();
+  });
 
   for (const buildUrl of endpoints) {
     try {
@@ -199,7 +197,19 @@ export async function POST(request: Request) {
     const body = (await request.json().catch(() => ({}))) as {
       message?: string;
       imageDataUrl?: string;
+      model?: string;
     };
+
+    // The UI can request a specific model. "free:*" choices (no API key) are
+    // routed straight to the keyless Pollinations backend; anything else goes
+    // to the configured provider (Groq by default) first, then falls back to
+    // free if that fails or there is no key.
+    const requestedModel =
+      typeof body.model === "string" && body.model.trim() !== ""
+        ? body.model.trim()
+        : undefined;
+    const preferFree =
+      requestedModel === "free:openai" || requestedModel === "free:mistral";
 
     // Reject malformed/oversized attachments silently (treat as no image).
     const imageDataUrl = isValidImageDataUrl(body.imageDataUrl)
@@ -216,18 +226,22 @@ export async function POST(request: Request) {
 
     let reply: string | null = null;
 
-    // Prefer the configured (paid/key) provider when available…
-    try {
-      reply = await askConfiguredProvider(message, imageDataUrl);
-    } catch (err) {
-      console.error("Configured AI provider failed, falling back to free:", err);
-      reply = null;
+            // Prefer the configured (paid/key) provider when available — unless the
+    // user explicitly asked for a free model from the UI selector.
+    // user explicitly asked for a free model from the UI selector.
+    if (!preferFree) {
+      try {
+        reply = await askConfiguredProvider(message, imageDataUrl, requestedModel);
+      } catch (err) {
+        console.error("Configured AI provider failed, falling back to free:", err);
+        reply = null;
+      }
     }
 
     // …otherwise fall back to the free, no-key endpoint.
     if (!reply) {
       try {
-        reply = await askFreeProvider(message, imageDataUrl);
+        reply = await askFreeProvider(message, imageDataUrl, requestedModel);
       } catch (err) {
         console.error("Free AI provider failed:", err);
         reply = null;

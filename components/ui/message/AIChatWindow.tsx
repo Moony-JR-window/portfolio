@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import AIResponse from "./AIResponse";
+import { useTheme } from "@/hooks/useTheme";
 
 /**
  * AIChatWindow — the dedicated chat UI opened by the "/ai" command.
@@ -66,6 +67,49 @@ function loadCache(): AIChatMessage[] {
   }
 }
 
+/** AI models offered by the chat's "select model" dropdown. */
+export type AIChatModel =
+  | "auto"
+  | "openai/gpt-oss-120b"
+  | "meta-llama/llama-4-scout-17b-16e-instruct"
+  | "free:openai"
+  | "free:mistral";
+
+interface ModelOption {
+  value: AIChatModel;
+  label: string;
+  short: string;
+  hint: string;
+}
+
+/** Choices in the "select model" dropdown. `auto` = server default. */
+export const MODEL_OPTIONS: ModelOption[] = [
+  { value: "auto", label: "Auto (best available)", short: "Auto", hint: "Server picks the best working provider." },
+  { value: "openai/gpt-oss-120b", label: "GPT-OSS 120B", short: "GPT-OSS", hint: "General chat via the configured provider." },
+  {
+    value: "meta-llama/llama-4-scout-17b-16e-instruct",
+    label: "Llama 4 Scout (vision)",
+    short: "Llama 4",
+    hint: "Multimodal — also auto-selected for image questions.",
+  },
+  { value: "free:openai", label: "OpenAI (free)", short: "OpenAI", hint: "Keyless Pollinations — no API key needed." },
+  { value: "free:mistral", label: "Mistral (free)", short: "Mistral", hint: "Keyless Pollinations — no API key needed." },
+];
+
+const MODEL_STORAGE_KEY = "moonydev_ai_model";
+
+function loadModel(): AIChatModel {
+  try {
+    const raw = localStorage.getItem(MODEL_STORAGE_KEY);
+    if (raw && MODEL_OPTIONS.some((m) => m.value === raw)) {
+      return raw as AIChatModel;
+    }
+  } catch {
+    /* storage blocked — ignore */
+  }
+  return "auto";
+}
+
 type ResizeDir = "e" | "s" | "se";
 
 export default function AIChatWindow({ initialQuestion, onClose }: Props) {
@@ -73,6 +117,14 @@ export default function AIChatWindow({ initialQuestion, onClose }: Props) {
   const [messages, setMessages] = useState<AIChatMessage[]>([]);
   const [thinking, setThinking] = useState(false);
   const [draft, setDraft] = useState("");
+
+  // ---- Model selection (persisted to localStorage) ----
+  const [selectedModel, setSelectedModel] = useState<AIChatModel>(loadModel);
+  const [showModel, setShowModel] = useState(false);
+  const modelRef = useRef<HTMLDivElement>(null);
+
+  // ---- Theme (synced with the portfolio site theme) ----
+  const { theme, isDark, toggle: toggleTheme } = useTheme();
 
   // ---- Image attachment (sent with the next question) ----
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
@@ -150,6 +202,27 @@ export default function AIChatWindow({ initialQuestion, onClose }: Props) {
     }
   }, [messages]);
 
+  // Remember the chosen model across reopens / reloads.
+  useEffect(() => {
+    try {
+      localStorage.setItem(MODEL_STORAGE_KEY, selectedModel);
+    } catch {
+      /* storage unavailable — ignore */
+    }
+  }, [selectedModel]);
+
+  // Close the model dropdown when clicking outside of it.
+  useEffect(() => {
+    if (!showModel) return;
+    function onOutside(e: MouseEvent | TouchEvent) {
+      if (modelRef.current && !modelRef.current.contains(e.target as Node)) {
+        setShowModel(false);
+      }
+    }
+    document.addEventListener("pointerdown", onOutside);
+    return () => document.removeEventListener("pointerdown", onOutside);
+  }, [showModel]);
+
   // Auto-scroll to the newest message.
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
@@ -202,9 +275,11 @@ export default function AIChatWindow({ initialQuestion, onClose }: Props) {
       const res = await fetch("/api/ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          img ? { message: q, imageDataUrl: img } : { message: q }
-        ),
+                body: JSON.stringify({
+          message: q,
+          model: selectedModel,
+          ...(img ? { imageDataUrl: img } : {}),
+        }),
       });
       const data = (await res.json().catch(() => ({}))) as { reply?: string };
       pushMsg("assistant", data.reply || "I couldn't think of an answer. Try again!");
@@ -370,7 +445,7 @@ export default function AIChatWindow({ initialQuestion, onClose }: Props) {
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
-        background: "rgba(255,255,255,0.94)",
+                background: "var(--card)",
         zIndex: 9999,
         fontFamily:
           "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
@@ -402,13 +477,110 @@ export default function AIChatWindow({ initialQuestion, onClose }: Props) {
           flexShrink: 0,
         }}
       >
-        <div style={{ minWidth: 0 }}>
+                        <div style={{ minWidth: 0 }}>
           <div style={{ fontWeight: 700, fontSize: 14 }}>✨ MooNyBot AI</div>
           <div style={{ fontSize: 11, opacity: 0.85 }}>
-            Free AI chat · &quot;/exit&quot; to go back to normal
-          </div>
+            {selectedModel === "auto"
+              ? 'Free AI chat · &quot;/exit&quot; to go back to normal'
+              : `${MODEL_OPTIONS.find((m) => m.value === selectedModel)?.label ?? "Free AI chat"} · &quot;/exit&quot; to close`}
+                    </div>
         </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <div
+          ref={modelRef}
+          style={{ display: "flex", gap: 4, alignItems: "center", position: "relative" }}
+        >
+          {/* Theme switch — synced with the portfolio's light/dark theme */}
+          <button
+            type="button"
+            onClick={() => toggleTheme()}
+            title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+            aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+            style={{
+              ...iconBtnStyle,
+              width: 28,
+              height: 28,
+              fontSize: 16,
+              borderRadius: "50%",
+              background: "rgba(255,255,255,0.18)",
+              color: "#fff",
+              border: "1px solid rgba(255,255,255,0.3)",
+            }}
+          >
+            {isDark ? "☀️" : "🌙"}
+          </button>
+          {/* Model selector */}
+          <button
+            type="button"
+            onClick={() => setShowModel((s) => !s)}
+            title="AI model"
+            style={{
+              ...iconBtnStyle,
+              fontSize: 11,
+              fontWeight: 600,
+              padding: "4px 8px",
+              borderRadius: 6,
+              background: "rgba(255,255,255,0.18)",
+              color: "#fff",
+              border: "1px solid rgba(255,255,255,0.3)",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              maxWidth: 120,
+              cursor: "pointer",
+            }}
+          >
+            {MODEL_OPTIONS.find((m) => m.value === selectedModel)?.short ?? "Auto"}
+            &nbsp;▼
+          </button>
+          {showModel && (
+            <div
+              style={{
+                position: "absolute",
+                top: "100%",
+                right: 0,
+                marginTop: 6,
+                minWidth: 200,
+                maxHeight: 280,
+                overflowY: "auto",
+                background: "var(--popover)",
+                color: "var(--popover-foreground)",
+                border: "1px solid var(--border)",
+                borderRadius: 8,
+                boxShadow: "0 8px 20px rgba(0,0,0,0.25)",
+                zIndex: 1000,
+                padding: 6,
+              }}
+            >
+              {MODEL_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => {
+                    setSelectedModel(opt.value);
+                    setShowModel(false);
+                  }}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    border: "none",
+                    background:
+                      selectedModel === opt.value ? "var(--accent)" : "transparent",
+                    color:
+                      selectedModel === opt.value
+                        ? "var(--accent-foreground)"
+                        : "var(--popover-foreground)",
+                    padding: "6px 8px",
+                    fontSize: 12,
+                    borderRadius: 4,
+                    cursor: "pointer",
+                  }}
+                >
+                  <div style={{ fontWeight: 600 }}>{opt.label}</div>
+                  <div style={{ fontSize: 10, opacity: 0.75 }}>{opt.hint}</div>
+                </button>
+              ))}
+            </div>
+          )}
           <button
             onClick={() => setMaximized((m) => !m)}
             title={maximized ? "Restore size" : "Maximize (full page under header)"}

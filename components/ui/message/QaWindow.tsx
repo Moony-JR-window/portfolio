@@ -184,6 +184,29 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
 
   // ---- AI mode: DeepSeek (key-gated) vs Free AI (anonymous) ----
   const [aiMode, setAiMode] = useState<"deepseek" | "free">("deepseek");
+  // ---- Free AI provider selector ----
+  type FreeProvider = "moonybot" | "deepseek" | "other";
+  const [freeProvider, setFreeProvider] = useState<FreeProvider>("moonybot");
+  const [showComingSoon, setShowComingSoon] = useState(false);
+
+  // ---- Elapsed time counter for QA / Auto Types ----
+  const [elapsed, setElapsed] = useState(0);
+  const startTimeRef = useRef<number | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const startTimer = () => {
+    startTimeRef.current = Date.now();
+    setElapsed(0);
+    timerRef.current = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - (startTimeRef.current ?? Date.now())) / 1000));
+    }, 1000);
+  };
+  const stopTimer = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    startTimeRef.current = null;
+  };
 
   // Esc leaves fullscreen while maximized; closes the window otherwise.
   useEffect(() => {
@@ -320,6 +343,7 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
     setNeedsKey(false);
     setBusy(true);
     setError(null);
+    startTimer();
     try {
       const body = new FormData();
       body.append("file", targetFile);
@@ -376,6 +400,7 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
       setError("Something went wrong. Please try again.");
     } finally {
       setBusy(false);
+      stopTimer();
     }
   }
 
@@ -397,6 +422,7 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
     setNeedsKey(false);
     setMiniBusy(true);
     setError(null);
+    startTimer();
     try {
       const body = new FormData();
       body.append("file", file);
@@ -466,6 +492,7 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
       setError("Something went wrong. Please try again.");
     } finally {
       setMiniBusy(false);
+      stopTimer();
     }
   }
 
@@ -620,6 +647,143 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
             </button>
           </div>
         </div>
+        {/* Free AI mode — choose provider */}
+        {aiMode === "free" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                fontSize: 12,
+                color: "#3f4750",
+              }}
+            >
+              Provider:
+              <div
+                style={{
+                  display: "flex",
+                  borderRadius: 8,
+                  overflow: "hidden",
+                  border: "1px solid #d0d7de",
+                  flex: 1,
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setFreeProvider("moonybot")}
+                  style={{
+                    flex: 1,
+                    border: "none",
+                    padding: "6px 8px",
+                    fontSize: 11,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    background: freeProvider === "moonybot" ? "#6366f1" : "#f7f9fb",
+                    color: freeProvider === "moonybot" ? "#fff" : "#3f4750",
+                    transition: "background .15s, color .15s",
+                  }}
+                >
+                  🤖 MoonyBot
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFreeProvider("deepseek")}
+                  style={{
+                    flex: 1,
+                    border: "none",
+                    padding: "6px 8px",
+                    fontSize: 11,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    background: freeProvider === "deepseek" ? "#10b981" : "#f7f9fb",
+                    color: freeProvider === "deepseek" ? "#fff" : "#3f4750",
+                    transition: "background .15s, color .15s",
+                  }}
+                >
+                  🔑 DeepSeek
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFreeProvider("other");
+                    setShowComingSoon(true);
+                    setTimeout(() => setShowComingSoon(false), 3000);
+                  }}
+                  style={{
+                    flex: 1,
+                    border: "none",
+                    padding: "6px 8px",
+                    fontSize: 11,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    background: freeProvider === "other" ? "#f59e0b" : "#f7f9fb",
+                    color: freeProvider === "other" ? "#fff" : "#3f4750",
+                    transition: "background .15s, color .15s",
+                  }}
+                >
+                  🌐 Other AI
+                </button>
+              </div>
+            </div>
+            {freeProvider === "moonybot" && (
+              <div
+                style={{
+                  fontSize: 11,
+                  color: "#6366f1",
+                  background: "#eef2ff",
+                  border: "1px solid #c7d2fe",
+                  borderRadius: 6,
+                  padding: "5px 8px",
+                }}
+              >
+                ✅ Anonymous — uses MoonyBot AI (Groq API)
+              </div>
+            )}
+            {freeProvider === "deepseek" && (
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  fontSize: 12,
+                  color: "#3f4750",
+                }}
+              >
+                🔑 Access key
+                <input
+                  type="password"
+                  value={accessKey}
+                  onChange={(e) => {
+                    setAccessKey(e.target.value);
+                    if (e.target.value.trim()) {
+                      setNeedsKey(false);
+                      setError(null);
+                    }
+                  }}
+                  placeholder="Required for DeepSeek"
+                  autoComplete="off"
+                  spellCheck={false}
+                  style={{ ...inputStyle, flex: 1, minWidth: 0 }}
+                />
+              </label>
+            )}
+            {freeProvider === "other" && showComingSoon && (
+              <div
+                style={{
+                  fontSize: 11,
+                  color: "#92400e",
+                  background: "#fffbeb",
+                  border: "1px solid #fde68a",
+                  borderRadius: 6,
+                  padding: "5px 8px",
+                }}
+              >
+                🚧 Coming soon — more AI providers will be added!
+              </div>
+            )}
+          </div>
+        )}
         {aiMode === "deepseek" && (
           <label
             style={{
@@ -744,11 +908,29 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
               />
             </label>
 
+            {/* AI mode status badge — shows which mode is active */}
+            <span
+              style={{
+                marginLeft: "auto",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                fontSize: 11,
+                fontWeight: 600,
+                color: aiMode === "deepseek" ? "#0f766e" : "#7c3aed",
+                background: aiMode === "deepseek" ? "#ecfdf5" : "#f5f3ff",
+                border: `1px solid ${aiMode === "deepseek" ? "#a7f3d0" : "#ddd6fe"}`,
+                borderRadius: 999,
+                padding: "4px 10px",
+              }}
+            >
+              {aiMode === "deepseek" ? "🔑 DeepSeek" : "🆓 Free AI"}
+            </span>
+
             <button
               onClick={() => void runQa(file, selectedSheet)}
               disabled={busy}
               style={{
-                marginLeft: "auto",
                 border: "none",
                 borderRadius: 8,
                 padding: "8px 16px",
@@ -804,32 +986,65 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
         )}
       </div>
       {/* Results */}
-      {busy && (
-        <div
-          style={{
-            flex: 1,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 10,
-            color: "#0ea5a4",
-          }}
-        >
-          <span
+      <div style={{ flex: 1, position: "relative", minHeight: 0 }}>
+        {(busy || miniBusy) && (
+          <div
             style={{
-              width: 16,
-              height: 16,
-              borderRadius: "50%",
-              border: "2px solid #0ea5a4",
-              borderTopColor: "transparent",
-              animation: "qa-spin 0.8s linear infinite",
+              position: "absolute",
+              inset: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 10,
+              color: "#0ea5a4",
+              background: "#ffffff",
+              zIndex: 10,
+              borderRadius: 8,
             }}
-          />
-          Fixing ...
-        </div>
-      )}
-
-      {!busy && data && (
+          >
+            <span
+              style={{
+                width: 20,
+                height: 20,
+                borderRadius: "50%",
+                border: "3px solid #0ea5a4",
+                borderTopColor: "transparent",
+                animation: "qa-spin 0.8s linear infinite",
+              }}
+            />
+            <span style={{ fontSize: 14, fontWeight: 600 }}>
+              {miniBusy ? "🪄 Auto Types ..." : "Fixing ..."}
+            </span>
+            <span
+              style={{
+                fontSize: 12,
+                fontWeight: 600,
+                color: "#3f4750",
+                background: "#f0f3f6",
+                border: "1px solid #d6e6e3",
+                borderRadius: 999,
+                padding: "4px 10px",
+                fontVariantNumeric: "tabular-nums",
+              }}
+            >
+              ⏱ {elapsed}s
+            </span>
+            <span
+              style={{
+                fontSize: 12,
+                fontWeight: 600,
+                color: aiMode === "deepseek" ? "#0f766e" : "#7c3aed",
+                background: aiMode === "deepseek" ? "#ecfdf5" : "#f5f3ff",
+                border: `1px solid ${aiMode === "deepseek" ? "#a7f3d0" : "#ddd6fe"}`,
+                borderRadius: 999,
+                padding: "4px 10px",
+              }}
+            >
+              {aiMode === "deepseek" ? "🔑 DeepSeek" : "🆓 Free AI"}
+            </span>
+          </div>
+        )}
+        {!busy && !miniBusy && data && (
         <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, padding: "10px 14px" }}>
             {statChip("Sheets", data.sheetNames.length)}
@@ -924,6 +1139,7 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
           </div>
         </div>
       )}
+      </div>
       {/* Resize grips — hidden while maximized */}
       {!maximized && (
         <>
