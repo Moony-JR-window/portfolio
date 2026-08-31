@@ -346,6 +346,11 @@ async function askAiJson(
       process.env.AI_QA_MODEL ||
       process.env.AI_MODEL ||
       "openai/gpt-oss-120b";
+    // DeepSeek V4 defaults to thinking mode, which is slow and can exceed the
+    // serverless function timeout. This strict-JSON QA job does not need it —
+    // force non-thinking so requests stay fast and cheap.
+    const isDeepSeek = /deepseek\.com/i.test(baseUrl);
+    const thinking = isDeepSeek ? { type: "disabled" } : undefined;
 
     // First try strict JSON mode; some models reject response_format, so
     // retry once without it before giving up on this provider. A 429
@@ -353,27 +358,29 @@ async function askAiJson(
     // retry in aiFixRows would otherwise burn the same budget immediately.
     for (const jsonMode of [true, false]) {
       try {
+        const body: Record<string, unknown> = {
+          model,
+          messages: [
+            { role: "system", content: system },
+            { role: "user", content: user },
+          ],
+          temperature: 0,
+          max_tokens: 2048,
+          ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
+          ...(thinking ? { thinking } : {}),
+        };
         let res = await fetch(`${baseUrl}/chat/completions`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${apiKey}`,
           },
-          body: JSON.stringify({
-            model,
-            messages: [
-              { role: "system", content: system },
-              { role: "user", content: user },
-            ],
-            temperature: 0,
-            max_tokens: 2048,
-            ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
-          }),
+          body: JSON.stringify(body),
           signal: AbortSignal.timeout(45000),
         });
         if (res.status === 429 || res.status === 413) {
-          const body = await res.text().catch(() => "");
-          const m = body.match(/try again in\s*([\d.]+)\s*s/i);
+          const errText = await res.text().catch(() => "");
+          const m = errText.match(/try again in\s*([\d.]+)\s*s/i);
           const waitSec = m
             ? Math.min(25, Math.ceil(parseFloat(m[1]) + 1))
             : 10;
@@ -387,16 +394,7 @@ async function askAiJson(
               "Content-Type": "application/json",
               Authorization: `Bearer ${apiKey}`,
             },
-            body: JSON.stringify({
-              model,
-              messages: [
-                { role: "system", content: system },
-                { role: "user", content: user },
-              ],
-              temperature: 0,
-              max_tokens: 2048,
-              ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
-            }),
+            body: JSON.stringify(body),
             signal: AbortSignal.timeout(45000),
           });
         }

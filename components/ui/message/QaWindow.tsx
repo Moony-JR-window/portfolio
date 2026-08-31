@@ -427,14 +427,28 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
       body.append("key", key);
 
       const res = await fetch("/api/qa/ai-fix", { method: "POST", body });
-      const json = (await res.json().catch(() => ({}))) as {
+      let json: {
         success?: boolean;
         error?: string;
         ai?: AiInfo;
-      } & QaData;
+      } & QaData = {} as never;
+      try {
+        json = await res.json();
+      } catch {
+        // non-JSON response (e.g. a platform 504/HTML error page) — fall
+        // through so the status is surfaced to the user below.
+      }
 
       if (!res.ok || !json.success) {
-        setError(json.error || "AI Fix failed. Please try again.");
+        if (json.error) {
+          setError(json.error);
+        } else {
+          setError(
+            res.status === 504
+              ? "The AI call timed out on the server (HTTP 504). Try again, or switch to a faster model."
+              : `AI Fix failed. Server responded HTTP ${res.status} — check the server logs for details.`
+          );
+        }
         return;
       }
 
@@ -481,6 +495,17 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
       );
       setAiTouched(true);
       setShowAiReport(true);
+      // Surface a truthful "why" when the AI agent could not be reached, so it
+      // doesn't look like a silent partial success (e.g. corporate network
+      // blocking the provider, or an invalid provider/model config).
+      if (json.ai && !json.ai.available) {
+        setError(
+          json.ai.summary ||
+            "🤖 AI agent unavailable — applied rule-based fixes only."
+        );
+      } else {
+        setError(null);
+      }
     } catch {
       setError("Something went wrong. Please try again.");
     } finally {
