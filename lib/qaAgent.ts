@@ -34,10 +34,11 @@ import {
  *      account types must exist in the reference vocabulary, amounts must
  *      be numeric.
  *   4. AUTO-INPUT: EMPTY Amount / Sender_Account_Type /
- *      Receiver_Account_Type / Sender_Account / Receiver_Account cells are
- *      filled from per-service statistics extracted from the reference —
- *      every filled value must be one the reference actually uses for that
- *      Service_Name, so nothing is ever invented.
+ *      Receiver_Account_Type / Sender_Account / Receiver_Account /
+ *      Account_Currency / Reciever_Currency cells are filled from per-service
+ *      statistics extracted from the reference — every filled value must be
+ *      one the reference actually uses for that Service_Name, so nothing is
+ *      ever invented.
  */
 
 // ---------------------------------------------------------------
@@ -56,6 +57,8 @@ export interface ServiceStat {
   senderAccounts: string[];
   /** Known Receiver_Account values (for filling empty accounts). */
   receiverAccounts: string[];
+  /** Known Account_Currency values (e.g. USD, KHR) used by this service. */
+  currencies: string[];
   /** Most frequent reference value per column — used by the deterministic
    *  auto-fill pass so all rows get filled even when the AI is unreachable. */
   modeAmount?: string;
@@ -63,6 +66,7 @@ export interface ServiceStat {
   modeReceiverType?: string;
   modeSenderAccount?: string;
   modeReceiverAccount?: string;
+  modeCurrency?: string;
 }
 
 export interface ReferenceProfile {
@@ -178,7 +182,7 @@ function extractProfile(wb: ExcelJS.Workbook): ReferenceProfile {
     const scenarios = new Set<string>();
     const receiverByType: Record<string, Set<string>> = {};
     // Per-service statistics for AUTO-INPUT (fill empty Amount / types /
-    // accounts with what the reference template uses for that service).
+    // accounts / currencies with what the reference template uses for that service).
     const statsByService: Record<
       string,
       {
@@ -187,6 +191,7 @@ function extractProfile(wb: ExcelJS.Workbook): ReferenceProfile {
         receiverTypes: Map<string, number>;
         senderAccounts: Map<string, number>;
         receiverAccounts: Map<string, number>;
+        currencies: Map<string, number>;
       }
     > = {};
 
@@ -229,6 +234,7 @@ function extractProfile(wb: ExcelJS.Workbook): ReferenceProfile {
           receiverTypes: new Map<string, number>(),
           senderAccounts: new Map<string, number>(),
           receiverAccounts: new Map<string, number>(),
+          currencies: new Map<string, number>(),
         });
         if (amountIdx >= 0) bump(stat.amounts, text(cell(amountIdx)));
         if (receiverAmountIdx >= 0) bump(stat.amounts, text(cell(receiverAmountIdx)));
@@ -236,6 +242,7 @@ function extractProfile(wb: ExcelJS.Workbook): ReferenceProfile {
         if (receiverTypeIdx >= 0) bump(stat.receiverTypes, text(cell(receiverTypeIdx)));
         if (senderAcctIdx >= 0) bump(stat.senderAccounts, text(cell(senderAcctIdx)));
         if (receiverAcctIdx >= 0) bump(stat.receiverAccounts, text(cell(receiverAcctIdx)));
+        if (currencyIdx >= 0) bump(stat.currencies, text(cell(currencyIdx)));
       }
     }
 
@@ -272,11 +279,13 @@ function extractProfile(wb: ExcelJS.Workbook): ReferenceProfile {
         receiverTypes: freq(s.receiverTypes, 4, 40),
         senderAccounts: freq(s.senderAccounts, 3, 24),
         receiverAccounts: freq(s.receiverAccounts, 2, 60),
+        currencies: freq(s.currencies, 4, 10),
         modeAmount: modeOf(s.amounts),
         modeSenderType: modeOf(s.senderTypes),
         modeReceiverType: modeOf(s.receiverTypes),
         modeSenderAccount: modeOf(s.senderAccounts),
         modeReceiverAccount: modeOf(s.receiverAccounts),
+        modeCurrency: modeOf(s.currencies),
       };
     }
     break; // first sheet carrying Service_Name is the testcase sheet
@@ -296,11 +305,12 @@ Rules:
 - "column" must be the exact header name used in the payload.
 
 AUTO-INPUT (the payload marks empty cells as ""):
-- When Amount, Receiver Amount, Sender_Account_Type, Reciever_Account_Type, Sender_Account or Receiver_Account is "" (empty), fill it from the PER-SERVICE REFERENCE block for that row's Service_Name:
+- When Amount, Receiver Amount, Sender_Account_Type, Reciever_Account_Type, Sender_Account, Receiver_Account, Account_Currency or Reciever_Currency is "" (empty), fill it from the PER-SERVICE REFERENCE block for that row's Service_Name:
   * Amount / Receiver Amount: use one of the exact amounts listed for that service (write it as a plain number).
   * Sender_Account_Type: "PSP" or "FC" — the value(s) the reference uses for that service; when both occur, match the sender account shape (8-digit phone => PSP, 9-digit => FC).
   * Reciever_Account_Type: one of the exact receiver types listed for that service.
   * Sender_Account / Receiver_Account: only an exact account value listed for that service. Never invent account numbers, KHQR strings or bill codes.
+  * Account_Currency / Reciever_Currency: use one of the exact currency codes listed for that service (e.g. "USD", "KHR").
 - If the per-service reference has no usable value for a column, leave it empty (do not suggest a fix for it).
 
 CORRECTIONS (non-empty cells):
@@ -674,6 +684,9 @@ export function autoFillFromReference(
     set("senderaccounttype", stat.modeSenderType);
     set("recieveraccounttype", stat.modeReceiverType);
     set("receiveraccounttype", stat.modeReceiverType);
+    set("accountcurrency", stat.modeCurrency);
+    set("recievercurrency", stat.modeCurrency);
+    set("receivercurrency", stat.modeCurrency);
     set(
       "senderaccount",
       pickAccount(stat.senderAccounts, stat.modeSenderAccount, senderType)
@@ -1228,16 +1241,19 @@ export function sanitizeAiFixes(
       key === "recievercurrency" ||
       key === "receivercurrency"
     ) {
-      if (isFill) {
-        rejected++; // no per-service reference backing for currencies
-        continue;
-      }
       const canonical = profile.currencies.length
         ? canonicalFromList(profile.currencies, to)
         : to;
       if (!canonical) {
         rejected++;
         continue;
+      }
+      if (isFill) {
+        // Grounded fill: only a currency the reference uses for this service.
+        if (!stat || !stat.currencies.length || !canonicalFromList(stat.currencies, canonical)) {
+          rejected++;
+          continue;
+        }
       }
       finalTo = canonical;
     } else if (isFill) {
