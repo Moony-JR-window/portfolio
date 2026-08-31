@@ -9,8 +9,9 @@ import { useEffect, useRef, useState } from "react";
  * but instead of an AI chat it is a QA tool that reuses the exact logic from
  * the standalone `excel_rename.py` (single-file, keep logic style):
  *   • Drop / upload a .xlsx / .xlsm workbook — QA runs automatically.
- *   • Every run is gated behind an access key (form field `key`, validated on
- *     the server by lib/qaKey.ts) — the testing key is "1234".
+ *   • AI mode selector — 🔑 DeepSeek (access key required, validated on the
+ *     server by lib/qaKey.ts — the testing key is "1234") or 🆓 Free AI
+ *     (anonymous, no key needed).
  *   • Pick the sheet + header row, click "Run QA".
  *   • The server unmerges every merged range and renames the Service_Name
  *     column to its canonical SERVICE key.
@@ -181,6 +182,9 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
   const [miniBusy, setMiniBusy] = useState(false);
   const [aiTouched, setAiTouched] = useState(false);
 
+  // ---- AI mode: DeepSeek (key-gated) vs Free AI (anonymous) ----
+  const [aiMode, setAiMode] = useState<"deepseek" | "free">("deepseek");
+
   // Esc leaves fullscreen while maximized; closes the window otherwise.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -293,8 +297,8 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
     setSelectedSheet("");
     setFile(next);
     setAiTouched(false);
-    if (!accessKey.trim()) {
-      // Key gate: do not hit the server without a key — ask the user first.
+    if (aiMode === "deepseek" && !accessKey.trim()) {
+      // DeepSeek mode key gate: do not hit the server without a key — ask the user first.
       setNeedsKey(true);
       setError("🔑 Enter the QA access key, then press Run QA.");
       return;
@@ -308,7 +312,7 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
     const targetFile = fileArg ?? file;
     if (!targetFile) return;
     const key = accessKey.trim();
-    if (!key) {
+    if (aiMode === "deepseek" && !key) {
       setNeedsKey(true);
       setError("🔑 Enter the QA access key, then press Run QA.");
       return;
@@ -321,7 +325,8 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
       body.append("file", targetFile);
       body.append("sheet", sheetArg ?? selectedSheet);
       body.append("headerRow", headerRowStr);
-      body.append("key", key);
+      body.append("aiMode", aiMode);
+      if (aiMode === "deepseek") body.append("key", key);
 
       const res = await fetch("/api/qa", { method: "POST", body });
       const json = (await res.json().catch(() => ({}))) as {
@@ -384,7 +389,7 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
   async function runMiniFix() {
     if (!file) return;
     const key = accessKey.trim();
-    if (!key) {
+    if (aiMode === "deepseek" && !key) {
       setNeedsKey(true);
       setError("🔑 Enter the QA access key, then press 🪄 Auto Types.");
       return;
@@ -397,7 +402,8 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
       body.append("file", file);
       body.append("sheet", selectedSheet);
       body.append("headerRow", headerRowStr);
-      body.append("key", key);
+      body.append("aiMode", aiMode);
+      if (aiMode === "deepseek") body.append("key", key);
 
       const res = await fetch("/api/qa/mini-fix", { method: "POST", body });
       let json: {
@@ -558,7 +564,8 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
           gap: 10,
         }}
       >
-        <label
+        {/* AI mode selector — DeepSeek (key-gated) vs Free AI (anonymous) */}
+        <div
           style={{
             display: "flex",
             alignItems: "center",
@@ -567,23 +574,80 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
             color: "#3f4750",
           }}
         >
-          🔑 Access key
-          <input
-            type="password"
-            value={accessKey}
-            onChange={(e) => {
-              setAccessKey(e.target.value);
-              if (e.target.value.trim()) {
-                setNeedsKey(false);
-                setError(null);
-              }
+          AI model:
+          <div
+            style={{
+              display: "flex",
+              borderRadius: 8,
+              overflow: "hidden",
+              border: "1px solid #d0d7de",
+              flex: 1,
             }}
-            placeholder="Required — this window is key-protected"
-            autoComplete="off"
-            spellCheck={false}
-            style={{ ...inputStyle, flex: 1, minWidth: 0 }}
-          />
-        </label>
+          >
+            <button
+              type="button"
+              onClick={() => setAiMode("deepseek")}
+              style={{
+                flex: 1,
+                border: "none",
+                padding: "6px 10px",
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: "pointer",
+                background: aiMode === "deepseek" ? "#10b981" : "#f7f9fb",
+                color: aiMode === "deepseek" ? "#fff" : "#3f4750",
+                transition: "background .15s, color .15s",
+              }}
+            >
+              🔑 DeepSeek
+            </button>
+            <button
+              type="button"
+              onClick={() => setAiMode("free")}
+              style={{
+                flex: 1,
+                border: "none",
+                padding: "6px 10px",
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: "pointer",
+                background: aiMode === "free" ? "#a855f7" : "#f7f9fb",
+                color: aiMode === "free" ? "#fff" : "#3f4750",
+                transition: "background .15s, color .15s",
+              }}
+            >
+              🆓 Free AI
+            </button>
+          </div>
+        </div>
+        {aiMode === "deepseek" && (
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 12,
+              color: "#3f4750",
+            }}
+          >
+            🔑 Access key
+            <input
+              type="password"
+              value={accessKey}
+              onChange={(e) => {
+                setAccessKey(e.target.value);
+                if (e.target.value.trim()) {
+                  setNeedsKey(false);
+                  setError(null);
+                }
+              }}
+              placeholder="Required — DeepSeek is key-protected"
+              autoComplete="off"
+              spellCheck={false}
+              style={{ ...inputStyle, flex: 1, minWidth: 0 }}
+            />
+          </label>
+        )}
         {needsKey && (
           <div style={{ fontSize: 11, color: "#d1242f" }}>
             🔑 Enter the access key to run QA on this file.
@@ -636,7 +700,7 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
                 Drop your Excel file here, or click to browse
               </div>
               <div style={{ fontSize: 11, color: "#8a8d91" }}>
-                .xlsx / .xlsm · up to {MAX_FILE_MB} MB · 🔑 key-protected
+                .xlsx / .xlsm · up to {MAX_FILE_MB} MB · {aiMode === "deepseek" ? "🔑 DeepSeek (key required)" : "🆓 Free AI (anonymous)"}
               </div>
             </div>
           )}
