@@ -912,22 +912,21 @@ export async function aiFixRows(
 // Every other cell is left untouched.
 // -------------------------------------------------------------------------
 
-const ACCOUNT_TYPE_SYSTEM_PROMPT = `You are a Wing Bank QA data assistant. You read ONE regression test-case row and decide the correct account TYPES and CURRENCIES at each end of the transaction. Reply ONLY with a strict JSON object and no prose:
-{"sender_account_type":"...","receiver_account_type":"...","sender_currency":"...","receiver_currency":"...","reason":"one short sentence"}
+const ACCOUNT_TYPE_SYSTEM_PROMPT = `You are a Wing Bank QA data assistant. You read a regression test-case description and determine the correct account types and currencies. Reply ONLY with a strict JSON object and no prose:
+
+{"Sender_Account_Type":"...","Account_Currency":"...","Reciever_Account_Type":"...","Reciever_Currency":"..."}
 
 Rules:
-- The TYPE names the account KIND, never a currency. Do NOT include "From", "To", or currency codes in the type.
-  "FC USD" -> type "FC" (9-digit Wing full bank account).
-  "PSP KHR" -> type "PSP" (8-digit Wing app wallet starting with 0).
-- Use ONLY the exact allowed types listed in the request; if none fits, keep the current value you were given.
-- IMPORTANT: The receiver type is ONLY the part after "From FC USD - ". Examples:
-  * "From FC USD - Cellcard" -> receiver_account_type = "Cellcard" (NOT "From FC USD - Cellcard")
-  * "From FC USD - Wing QR Customer static tag29 USD" -> receiver_account_type = "Wing QR Customer static tag29 USD"
-  * "From FC USD - Wing QR Merchant static tag29 KHR" -> receiver_account_type = "Wing QR Merchant static tag29 KHR"
-- "From FC USD - Cellcard/Metfone/Smart" -> sender "FC", receiver "Operator".
-- A plain "Phone Number", "EDC", "ABA Bank", "Bakong wallet", "Merchant App PSP/FC", "Customer QR OtherBank", "Merchant QR Other Bank", "Advanced Bank of Asia Ltd", "Angkor Hospital" is itself a type.
-- In most cases both ends are Wing wallets: type FC on both sides (Wallet -> Wallet).
-- For currencies: extract the 3-letter currency code (USD, KHR, THB) from the text. The format is typically "From <sender_type> <sender_currency> - <receiver_info> <receiver_currency>". If only one currency is mentioned, both ends use that currency.`;
+- Sender_Account_Type: The sender account KIND (FC, PSP, etc.). FC = 9-digit Wing full bank account. PSP = 8-digit Wing app wallet starting with 0.
+- Reciever_Account_Type: The receiver account KIND. Extract from the text after "From <sender> - " if present.
+- Account_Currency: The 3-letter currency code (USD, KHR, THB) for the sender side.
+- Reciever_Currency: The 3-letter currency code for the receiver side.
+- If only one currency is mentioned, use it for both sides.
+- Common patterns:
+  * "Wing to Wing From FC KHR-FC USD" -> Sender: FC, Currency: KHR, Receiver: FC, Currency: USD
+  * "Wing to Wing From FC USD" -> Sender: FC, Currency: USD, Receiver: FC, Currency: USD
+  * "From FC USD - Cellcard" -> Sender: FC, Receiver: Cellcard
+  * "From PSP KHR - Wing QR Customer" -> Sender: PSP, Receiver: Wing QR Customer`;
 
 interface AccountTypeVerdict {
   sender: string;
@@ -952,37 +951,29 @@ async function askAccountTypeVerdict(
   },
   providerHint: QaProvider = "auto"
 ): Promise<AccountTypeVerdict | null> {
-  const user = [
-    `Service_Name: ${input.service || "?"}`,
-    `Row text: ${input.text || "?"}`,
-    `Current Sender_Account_Type: ${input.currentSender || "(empty)"}`,
-    `Current Reciever_Account_Type: ${input.currentReceiver || "(empty)"}`,
-    `Sender currency: ${input.senderCurrency || "?"}`,
-    `Receiver currency: ${input.receiverCurrency || "?"}`,
-    `Allowed SENDER account types: ${JSON.stringify(input.allowedSender)}`,
-    `Allowed RECEIVER account types: ${JSON.stringify(input.allowedReceiver)}`,
-  ].join("\n");
-    const raw = await askAiJson(ACCOUNT_TYPE_SYSTEM_PROMPT, user, providerHint);
+  // Build simple command: "Wing to Wing From FC KHR-FC USD what is Sender_Account_Type, Account_Currency, Reciever_Account_Type, Reciever_Currency"
+  const command = `${input.service || "?"} ${input.text || ""} what is Sender_Account_Type, Account_Currency, Reciever_Account_Type, Reciever_Currency`;
+  const raw = await askAiJson(ACCOUNT_TYPE_SYSTEM_PROMPT, command, providerHint);
   if (!raw) return null;
+
+  // Parse AI response - expects: {"Sender_Account_Type":"FC","Account_Currency":"KHR","Reciever_Account_Type":"FC","Reciever_Currency":"USD"}
   const sender = String(
-    raw.sender_account_type ?? raw.senderAccountType ?? ""
+    raw.Sender_Account_Type ?? raw.sender_account_type ?? raw.senderAccountType ?? ""
   ).trim();
   let receiver = String(
-    raw.receiver_account_type ??
-      raw.receiverAccountType ??
-      raw.reciever_account_type ??
-      ""
+    raw.Reciever_Account_Type ?? raw.receiver_account_type ?? raw.receiverAccountType ?? raw.reciever_account_type ?? ""
   ).trim();
+  const senderCurrency = String(raw.Account_Currency ?? raw.sender_currency ?? raw.senderCurrency ?? "").trim().toUpperCase();
+  const receiverCurrency = String(raw.Reciever_Currency ?? raw.receiver_currency ?? raw.receiverCurrency ?? "").trim().toUpperCase();
+
   // Clean up receiver: remove "From ... - " prefix if AI included it
   const fromPrefix = /^from\s+.*?\s*-\s*/i;
   if (fromPrefix.test(receiver)) {
     receiver = receiver.replace(fromPrefix, "").trim();
   }
-  const senderCurrency = String(raw.sender_currency ?? raw.senderCurrency ?? "").trim().toUpperCase();
-  const receiverCurrency = String(raw.receiver_currency ?? raw.receiverCurrency ?? "").trim().toUpperCase();
-  const reason = String(raw.reason ?? "").trim().slice(0, 160);
+
   if (!sender && !receiver) return null;
-  return { sender, receiver, senderCurrency, receiverCurrency, reason };
+  return { sender, receiver, senderCurrency, receiverCurrency, reason: `AI detected from: ${input.text}` };
 }
 
 /**
@@ -1069,41 +1060,40 @@ export async function miniFixAccountTypes(
     const row = rows[r];
     const service = String(row?.[serviceCol ?? -1] ?? "").trim();
     const desc = String(row?.[descCol ?? -1] ?? "").trim();
+    // Only use Test_Case_Description for AI detection
     const text = desc || service;
     if (text) candidates.push({ idx: r, service, text });
   }
   if (!candidates.length) return base;
 
   const fixes: AiFix[] = [];
-  const BATCH = 5; // small parallel fan-out keeps 58-row sheets under 60s
-  for (let i = 0; i < candidates.length; i += BATCH) {
-    const batch = candidates.slice(i, i + BATCH);
-    const verdicts = await Promise.all(
-      batch.map((c) =>
-                                askAccountTypeVerdict(
-          {
-            service: c.service,
-          text: c.text,
+  // Process rows 1 by 1 (as user requested) - simpler and more reliable
+  for (const candidate of candidates) {
+    try {
+      const verdict = await askAccountTypeVerdict(
+        {
+          service: candidate.service,
+          text: candidate.text,
           senderCurrency: String(
-            rows[c.idx]?.[senderCurrCol ?? -1] ?? ""
+            rows[candidate.idx]?.[senderCurrCol ?? -1] ?? ""
           ).trim(),
           receiverCurrency: String(
-            rows[c.idx]?.[receiverCurrCol ?? -1] ?? ""
+            rows[candidate.idx]?.[receiverCurrCol ?? -1] ?? ""
           ).trim(),
-          currentSender: String(rows[c.idx]?.[senderCol ?? -1] ?? "").trim(),
-          currentReceiver: String(rows[c.idx]?.[receiverCol ?? -1] ?? "").trim(),
+          currentSender: String(rows[candidate.idx]?.[senderCol ?? -1] ?? "").trim(),
+          currentReceiver: String(rows[candidate.idx]?.[receiverCol ?? -1] ?? "").trim(),
           allowedSender: profile.senderAccountTypes,
           allowedReceiver: profile.receiverAccountTypes,
         },
         providerHint
-        )
-      )
-    );
-    verdicts.forEach((verdict, k) => {
-      if (!verdict) return;
-      const rowNum = batch[k].idx + 1;
+      );
+
+      if (!verdict) continue;
+      const rowNum = candidate.idx + 1;
+
+      // Update Sender_Account_Type
       if (senderCol !== undefined) {
-        const current = String(rows[batch[k].idx]?.[senderCol] ?? "").trim();
+        const current = String(rows[candidate.idx]?.[senderCol] ?? "").trim();
         const to = pickAccountType(profile.senderAccountTypes, verdict.sender);
         if (to && looseKey(to) !== looseKey(current)) {
           fixes.push({
@@ -1111,35 +1101,31 @@ export async function miniFixAccountTypes(
             column: headers[senderCol],
             from: current,
             to,
-            reason:
-              verdict.reason ||
-              "Auto-corrected Sender_Account_Type from the row text",
+            reason: "AI auto-typed from Test_Case_Description",
             fill: current === "",
           });
         }
       }
+
+      // Update Reciever_Account_Type
       if (receiverCol !== undefined) {
-        const current = String(rows[batch[k].idx]?.[receiverCol] ?? "").trim();
-        const to = pickAccountType(
-          profile.receiverAccountTypes,
-          verdict.receiver
-        );
+        const current = String(rows[candidate.idx]?.[receiverCol] ?? "").trim();
+        const to = pickAccountType(profile.receiverAccountTypes, verdict.receiver);
         if (to && looseKey(to) !== looseKey(current)) {
           fixes.push({
             row: rowNum,
             column: headers[receiverCol],
             from: current,
             to,
-            reason:
-              verdict.reason ||
-              "Auto-corrected Reciever_Account_Type from the row text",
+            reason: "AI auto-typed from Test_Case_Description",
             fill: current === "",
           });
         }
       }
-      // Handle Account_Currency
+
+      // Update Account_Currency
       if (senderCurrCol !== undefined && verdict.senderCurrency) {
-        const current = String(rows[batch[k].idx]?.[senderCurrCol] ?? "").trim();
+        const current = String(rows[candidate.idx]?.[senderCurrCol] ?? "").trim();
         const to = pickCurrency(profile.currencies, verdict.senderCurrency);
         if (to && to.toUpperCase() !== current.toUpperCase()) {
           fixes.push({
@@ -1147,14 +1133,15 @@ export async function miniFixAccountTypes(
             column: headers[senderCurrCol],
             from: current,
             to,
-            reason: "Auto-corrected Account_Currency from the row text",
+            reason: "AI auto-typed from Test_Case_Description",
             fill: current === "",
           });
         }
       }
-      // Handle Reciever_Currency
+
+      // Update Reciever_Currency
       if (receiverCurrCol !== undefined && verdict.receiverCurrency) {
-        const current = String(rows[batch[k].idx]?.[receiverCurrCol] ?? "").trim();
+        const current = String(rows[candidate.idx]?.[receiverCurrCol] ?? "").trim();
         const to = pickCurrency(profile.currencies, verdict.receiverCurrency);
         if (to && to.toUpperCase() !== current.toUpperCase()) {
           fixes.push({
@@ -1162,12 +1149,15 @@ export async function miniFixAccountTypes(
             column: headers[receiverCurrCol],
             from: current,
             to,
-            reason: "Auto-corrected Reciever_Currency from the row text",
+            reason: "AI auto-typed from Test_Case_Description",
             fill: current === "",
           });
         }
       }
-    });
+    } catch (err) {
+      console.error(`[qaAgent] Error processing row ${candidate.idx + 1}:`, err);
+      // Continue to next row on error
+    }
   }
 
   return {
@@ -1176,7 +1166,7 @@ export async function miniFixAccountTypes(
     fixes: fixes.slice(0, 400),
     summary:
       fixes.length > 0
-        ? `🪄 Checked ${candidates.length} row(s) with the AI and corrected ${fixes.length} cell(s) — only Sender_Account_Type / Reciever_Account_Type / Account_Currency / Reciever_Currency were changed.`
+        ? `🪄 AI auto-typed ${fixes.length} cell(s) from ${candidates.length} row(s) — using Test_Case_Description.`
         : "🪄 No account-type or currency corrections were needed.",
   };
 }
