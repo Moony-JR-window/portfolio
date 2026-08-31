@@ -31,6 +31,7 @@ const fs = require("fs");
   );
   form.append("sheet", "Biinding");
   form.append("headerRow", "1");
+  form.append("key", "1234"); // test access key (see lib/qaKey.ts)
 
   const t0 = Date.now();
   const res = await fetch("http://localhost:3000/api/qa/ai-fix", {

@@ -16,16 +16,23 @@ export async function POST(request: NextRequest) {
   };
 
   push("env", {
-    hasKey: !!process.env.AI_API_KEY,
+    hasKey: !!(process.env.AI_QA_API_KEY || process.env.AI_API_KEY),
     model: process.env.AI_QA_MODEL || process.env.AI_MODEL || "openai/gpt-oss-120b",
-    base: process.env.AI_BASE_URL || "https://api.groq.com/openai/v1",
+    base:
+      process.env.AI_QA_BASE_URL ||
+      process.env.AI_BASE_URL ||
+      "https://api.groq.com/openai/v1",
   });
 
   const profile = await loadReferenceProfile();
   push("profile", { ok: !!profile, services: profile?.serviceKeys.length ?? -1 });
 
-  const apiKey = process.env.AI_API_KEY;
-  const baseUrl = (process.env.AI_BASE_URL || "https://api.groq.com/openai/v1").replace(/\/$/, "");
+  const apiKey = process.env.AI_QA_API_KEY || process.env.AI_API_KEY;
+  const baseUrl = (
+    process.env.AI_QA_BASE_URL ||
+    process.env.AI_BASE_URL ||
+    "https://api.groq.com/openai/v1"
+  ).replace(/\/$/, "");
   const model = process.env.AI_QA_MODEL || process.env.AI_MODEL || "openai/gpt-oss-120b";
   const system = "You are a QA agent. Reply STRICTLY with JSON and no prose.";
   const user = "row 1: service=Wing to Wing amount=[] senderType=[]\nReply {\"fixes\":[],\"summary\":\"ok\"}";

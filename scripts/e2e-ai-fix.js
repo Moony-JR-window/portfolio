@@ -29,6 +29,7 @@ const ExcelJS = require("exceljs");
   form.append("file", new Blob([buf]), "broken_testcase.xlsx");
   form.append("sheet", "Biinding");
   form.append("headerRow", String(hr));
+  form.append("key", "1234"); // test access key (see lib/qaKey.ts)
 
   const res = await fetch("http://localhost:3000/api/qa/ai-fix", {
     method: "POST",

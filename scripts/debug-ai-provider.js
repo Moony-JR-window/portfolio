@@ -7,8 +7,12 @@ for (const line of fs.readFileSync(".env.local", "utf8").split("\n")) {
 }
 
 (async () => {
-  const apiKey = process.env.AI_API_KEY;
-  const baseUrl = (process.env.AI_BASE_URL || "https://api.groq.com/openai/v1").replace(/\/$/, "");
+  const apiKey = process.env.AI_QA_API_KEY || process.env.AI_API_KEY;
+  const baseUrl = (
+    process.env.AI_QA_BASE_URL ||
+    process.env.AI_BASE_URL ||
+    "https://api.groq.com/openai/v1"
+  ).replace(/\/$/, "");
   const model = process.env.AI_QA_MODEL || process.env.AI_MODEL || "openai/gpt-oss-120b";
   console.log("baseUrl:", baseUrl, "model:", model, "key set:", Boolean(apiKey));
   if (!apiKey) process.exit(1);

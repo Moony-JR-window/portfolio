@@ -9,6 +9,8 @@ import { useEffect, useRef, useState } from "react";
  * but instead of an AI chat it is a QA tool that reuses the exact logic from
  * the standalone `excel_rename.py` (single-file, keep logic style):
  *   • Drop / upload a .xlsx / .xlsm workbook — QA runs automatically.
+ *   • Every run is gated behind an access key (form field `key`, validated on
+ *     the server by lib/qaKey.ts) — the testing key is "1234".
  *   • Pick the sheet + header row, click "Run QA".
  *   • The server unmerges every merged range and renames the Service_Name
  *     column to its canonical SERVICE key.
@@ -195,6 +197,11 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
   const [activeTab, setActiveTab] = useState<"original" | "fixed">("fixed");
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
 
+  // ---- Access-key gate (validated server-side by lib/qaKey.ts) ----
+  const [accessKey, setAccessKey] = useState("");
+  /** True when the window is asking the user for the key before running QA. */
+  const [needsKey, setNeedsKey] = useState(false);
+
   // ---- AI Fix state (POST /api/qa/ai-fix) ----
   const [aiBusy, setAiBusy] = useState(false);
   const [aiInfo, setAiInfo] = useState<AiInfo | null>(null);
@@ -314,6 +321,13 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
     setFile(next);
     setAiInfo(null); // fresh file → previous AI report is obsolete
     setAiTouched(false);
+    if (!accessKey.trim()) {
+      // Key gate: do not hit the server without a key — ask the user first.
+      setNeedsKey(true);
+      setError("🔑 Enter the QA access key, then press Run QA.");
+      return;
+    }
+    setNeedsKey(false);
     // Auto-run once on pick so sheets populate + the default sheet is already
     // processed (sheet "" = server picks the first sheet).
     void runQa(next, "");
@@ -321,6 +335,13 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
   async function runQa(fileArg?: File, sheetArg?: string) {
     const targetFile = fileArg ?? file;
     if (!targetFile) return;
+    const key = accessKey.trim();
+    if (!key) {
+      setNeedsKey(true);
+      setError("🔑 Enter the QA access key, then press Run QA.");
+      return;
+    }
+    setNeedsKey(false);
     setBusy(true);
     setError(null);
     try {
@@ -328,6 +349,7 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
       body.append("file", targetFile);
       body.append("sheet", sheetArg ?? selectedSheet);
       body.append("headerRow", headerRowStr);
+      body.append("key", key);
 
       const res = await fetch("/api/qa", { method: "POST", body });
       const json = (await res.json().catch(() => ({}))) as {
@@ -388,6 +410,13 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
    */
   async function runAiFix() {
     if (!file) return;
+    const key = accessKey.trim();
+    if (!key) {
+      setNeedsKey(true);
+      setError("🔑 Enter the QA access key, then press ✨ AI Fix.");
+      return;
+    }
+    setNeedsKey(false);
     setAiBusy(true);
     setError(null);
     try {
@@ -395,6 +424,7 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
       body.append("file", file);
       body.append("sheet", selectedSheet);
       body.append("headerRow", headerRowStr);
+      body.append("key", key);
 
       const res = await fetch("/api/qa/ai-fix", { method: "POST", body });
       const json = (await res.json().catch(() => ({}))) as {
@@ -553,6 +583,38 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
           gap: 10,
         }}
       >
+        <label
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            fontSize: 12,
+            color: "#3f4750",
+          }}
+        >
+          🔑 Access key
+          <input
+            type="password"
+            value={accessKey}
+            onChange={(e) => {
+              setAccessKey(e.target.value);
+              if (e.target.value.trim()) {
+                setNeedsKey(false);
+                setError(null);
+              }
+            }}
+            placeholder="Required — this window is key-protected"
+            autoComplete="off"
+            spellCheck={false}
+            style={{ ...inputStyle, flex: 1, minWidth: 0 }}
+          />
+        </label>
+        {needsKey && (
+          <div style={{ fontSize: 11, color: "#d1242f" }}>
+            🔑 Enter the access key to run QA on this file.
+          </div>
+        )}
+
         <input
           ref={fileInputRef}
           type="file"
@@ -599,7 +661,7 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
                 Drop your Excel file here, or click to browse
               </div>
               <div style={{ fontSize: 11, color: "#8a8d91" }}>
-                .xlsx / .xlsm · up to {MAX_FILE_MB} MB
+                .xlsx / .xlsm · up to {MAX_FILE_MB} MB · 🔑 key-protected
               </div>
             </div>
           )}

@@ -13,6 +13,7 @@ import {
   loadReferenceProfile,
   type AiFix,
 } from "@/lib/qaAgent";
+import { isValidQaKey } from "@/lib/qaKey";
 
 export const maxDuration = 60;
 
@@ -31,7 +32,8 @@ export const maxDuration = 60;
  *   3. Validated AI fixes are applied to the workbook and returned with a
  *      human-readable report + the fixed workbook (base64).
  *
- * Body: multipart/form-data — file (required), sheet, headerRow (optional).
+ * Body: multipart/form-data — file (required), key (required; see lib/qaKey.ts),
+ * sheet, headerRow (optional).
  *
  * Fail-soft: when the AI provider is unreachable the response still carries
  * the rule-based fixed workbook with `ai.available: false`.
@@ -56,6 +58,17 @@ export async function POST(request: NextRequest) {
           error: "Unsupported file type. Please upload a .xlsx or .xlsm file.",
         },
         { status: 400 }
+      );
+    }
+
+    // Access-key gate — same guard as POST /api/qa.
+    if (!isValidQaKey(formData.get("key"))) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Invalid or missing QA access key.",
+        },
+        { status: 403 }
       );
     }
 

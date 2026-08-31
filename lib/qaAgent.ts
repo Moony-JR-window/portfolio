@@ -20,11 +20,13 @@ import {
  *      checked against: canonical Service_Name keys, valid
  *      Sender/Receiver account types, real account samples (PSP = 8-digit
  *      phone, FC = 9-digit account), class-of-service values, currencies.
- *   2. `aiFixRows()` sends the bounded data rows to the AI agent (same
- *      provider stack as the "/ai" chat: Groq via AI_API_KEY, free
- *      Pollinations fallback) and asks it to verify & correct
- *      Service_Name, Sender type/account, Amount, Receiver type/account,
- *      plus scenario/description consistency — replying STRICT JSON.
+ *   2. `aiFixRows()` sends the bounded data rows to the AI agent and asks it
+ *      to verify & correct Service_Name, Sender type/account, Amount,
+ *      Receiver type/account, plus scenario/description consistency —
+ *      replying STRICT JSON. Provider is OpenAI-compatible: Groq by default
+ *      (AI_API_KEY / AI_BASE_URL / AI_MODEL); DeepSeek is supported by
+ *      overriding AI_QA_API_KEY, AI_QA_BASE_URL and AI_QA_MODEL (see
+ *      askAiJson). A free keyless Pollinations call is the last resort.
  *   3. Every suggested fix goes through `sanitizeAiFixes()` guardrails so a
  *      hallucinating model cannot corrupt the workbook: only whitelisted QA
  *      columns may change, Service_Name must land on a canonical key,
@@ -333,10 +335,12 @@ async function askAiJson(
   system: string,
   user: string
 ): Promise<Record<string, unknown> | null> {
-  const apiKey = process.env.AI_API_KEY;
+  const apiKey = process.env.AI_QA_API_KEY || process.env.AI_API_KEY;
   if (apiKey) {
     const baseUrl = (
-      process.env.AI_BASE_URL || "https://api.groq.com/openai/v1"
+      process.env.AI_QA_BASE_URL ||
+      process.env.AI_BASE_URL ||
+      "https://api.groq.com/openai/v1"
     ).replace(/\/$/, "");
     const model =
       process.env.AI_QA_MODEL ||
@@ -398,7 +402,7 @@ async function askAiJson(
         }
         if (!res.ok) {
           console.error(
-            `[qaAgent] Groq ${res.status}:`,
+            `[qaAgent] Provider ${res.status}:`,
             (await res.text()).slice(0, 300)
           );
           continue;
@@ -409,7 +413,7 @@ async function askAiJson(
         );
         if (parsed) return parsed;
       } catch (err) {
-        console.error("[qaAgent] Groq fetch threw:", err);
+        console.error("[qaAgent] Provider fetch threw:", err);
         // provider hiccup — try the next mode / provider
       }
     }

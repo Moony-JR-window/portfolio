@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { processWorkbook, workbookToBase64 } from "@/lib/excelLogic";
+import { isValidQaKey } from "@/lib/qaKey";
 
 /**
  * POST /api/qa
@@ -13,6 +14,7 @@ import { processWorkbook, workbookToBase64 } from "@/lib/excelLogic";
  *
  * Body: multipart/form-data
  *   file      — the .xlsx / .xlsm workbook   (required)
+ *   key       — access key for the /qa window (required; see lib/qaKey.ts)
  *   sheet     — sheet name to rename/apply QA on (optional; defaults to first)
  *   headerRow — 1-based header row          (optional; defaults to 1)
  *
@@ -39,6 +41,17 @@ export async function POST(request: NextRequest) {
           error: "Unsupported file type. Please upload a .xlsx or .xlsm file.",
         },
         { status: 400 }
+      );
+    }
+
+    // Access-key gate — the /qa window requires a valid key to process files.
+    if (!isValidQaKey(formData.get("key"))) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Invalid or missing QA access key.",
+        },
+        { status: 403 }
       );
     }
 
