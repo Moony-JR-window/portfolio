@@ -14,13 +14,11 @@ import { useEffect, useRef, useState } from "react";
  *   • Pick the sheet + header row, click "Run QA".
  *   • The server unmerges every merged range and renames the Service_Name
  *     column to its canonical SERVICE key.
- *   • "✨ AI Fix" sends the file again to the AI agent (POST /api/qa/ai-fix),
- *     which compares every row with the correct reference template
- *     (excel_data/Wing Bank Regression Testcase Template
- *     1.5_unmerged_renamed.xlsx) and auto-corrects Service_Name, Sender
- *     account/type, Amount and Receiver account/type — with a per-fix report.
+ *   • "🪄 Auto Types" sends the file to the AI agent (POST /api/qa/mini-fix),
+ *     which reads every row and corrects ONLY Sender_Account_Type,
+ *     Reciever_Account_Type, Account_Currency and Reciever_Currency.
  *   • Preview Original vs Fixed side-by-side (tabs) and download the fixed
- *     workbook (`*_ai_fixed.xlsx` after an AI pass).
+ *     workbook.
  */
 
 /** Height of the sticky site header (site-header.tsx uses h-16 = 64px). */
@@ -48,29 +46,6 @@ interface QaData {
   original: PreviewSet;
   fixed: PreviewSet;
   fixedBase64: string;
-}
-
-/** One AI agent correction (row is 1-based within the data area). */
-interface AiFixItem {
-  row: number;
-  column: string;
-  from: string;
-  to: string;
-  reason: string;
-  /** True when the agent AUTO-INPUT this previously-empty cell. */
-  fill?: boolean;
-}
-
-/** AI agent verdict returned by POST /api/qa/ai-fix. */
-interface AiInfo {
-  available: boolean;
-  checkedRows: number;
-  suggested: number;
-  applied: number;
-  /** How many of the applied fixes were auto-inputs of empty cells. */
-  filled?: number;
-  summary: string;
-  fixes: AiFixItem[];
 }
 
 function formatBytes(bytes: number): string {
@@ -202,11 +177,6 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
   /** True when the window is asking the user for the key before running QA. */
   const [needsKey, setNeedsKey] = useState(false);
 
-  // ---- AI Fix state (POST /api/qa/ai-fix) ----
-  const [aiBusy, setAiBusy] = useState(false);
-  const [aiInfo, setAiInfo] = useState<AiInfo | null>(null);
-  const [showAiReport, setShowAiReport] = useState(true);
-
   // ---- 🪄 Auto Types state (POST /api/qa/mini-fix) ----
   const [miniBusy, setMiniBusy] = useState(false);
   const [aiTouched, setAiTouched] = useState(false);
@@ -322,7 +292,6 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
     setSheetNames([]);
     setSelectedSheet("");
     setFile(next);
-    setAiInfo(null); // fresh file → previous AI report is obsolete
     setAiTouched(false);
     if (!accessKey.trim()) {
       // Key gate: do not hit the server without a key — ask the user first.
@@ -406,121 +375,11 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
   }
 
   /**
-   * "✨ AI Fix" — send the (already unmerged/renamed) workbook through
-   * POST /api/qa/ai-fix so the AI agent compares it with the correct
-   * reference template and auto-applies corrections to Service_Name,
-   * Sender account/type, Amount and Receiver account/type.
-   */
-  async function runAiFix() {
-    if (!file) return;
-    const key = accessKey.trim();
-    if (!key) {
-      setNeedsKey(true);
-      setError("🔑 Enter the QA access key, then press ✨ AI Fix.");
-      return;
-    }
-    setNeedsKey(false);
-    setAiBusy(true);
-    setError(null);
-    try {
-      const body = new FormData();
-      body.append("file", file);
-      body.append("sheet", selectedSheet);
-      body.append("headerRow", headerRowStr);
-      body.append("key", key);
-
-      const res = await fetch("/api/qa/ai-fix", { method: "POST", body });
-      let json: {
-        success?: boolean;
-        error?: string;
-        ai?: AiInfo;
-      } & QaData = {} as never;
-      try {
-        json = await res.json();
-      } catch {
-        // non-JSON response (e.g. a platform 504/HTML error page) — fall
-        // through so the status is surfaced to the user below.
-      }
-
-      if (!res.ok || !json.success) {
-        if (json.error) {
-          setError(json.error);
-        } else {
-          setError(
-            res.status === 504
-              ? "The AI call timed out on the server (HTTP 504). Try again, or switch to a faster model."
-              : `AI Fix failed. Server responded HTTP ${res.status} — check the server logs for details.`
-          );
-        }
-        return;
-      }
-
-      if (json.fixedBase64) {
-        const bin = atob(json.fixedBase64);
-        const bytes = new Uint8Array(bin.length);
-        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-        setDownloadUrl(
-          URL.createObjectURL(
-            new Blob([bytes], {
-              type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            })
-          )
-        );
-      }
-
-      setSheetNames(json.sheetNames);
-      setSelectedSheet(json.sheetName);
-      setHeaderRowStr(String(json.headerRow));
-      setActiveTab("fixed");
-      setData({
-        fileName: json.fileName,
-        sheetNames: json.sheetNames,
-        sheetName: json.sheetName,
-        headerRow: json.headerRow,
-        totalRows: json.totalRows,
-        previewRows: json.previewRows,
-        unmergedRanges: json.unmergedRanges,
-        serviceCol: json.serviceCol,
-        renameCount: json.renameCount,
-        original: json.original,
-        fixed: json.fixed,
-        fixedBase64: json.fixedBase64,
-      });
-      setAiInfo(
-        json.ai ?? {
-          available: false,
-          checkedRows: 0,
-          suggested: 0,
-          applied: 0,
-          summary: "",
-          fixes: [],
-        }
-      );
-      setAiTouched(true);
-      setShowAiReport(true);
-      // Surface a truthful "why" when the AI agent could not be reached, so it
-      // doesn't look like a silent partial success (e.g. corporate network
-      // blocking the provider, or an invalid provider/model config).
-      if (json.ai && !json.ai.available) {
-        setError(
-          json.ai.summary ||
-            "🤖 AI agent unavailable — applied rule-based fixes only."
-        );
-      } else {
-        setError(null);
-      }
-    } catch {
-      setError("Something went wrong. Please try again.");
-    } finally {
-      setAiBusy(false);
-    }
-  }
-
-  /**
    * "🪄 Auto Types" — send the workbook through POST /api/qa/mini-fix.
-   * The AI reads every row and corrects ONLY Sender_Account_Type /
-   * Reciever_Account_Type from the Test_Case_Description text (the Scenarios
-   * column is NOT used). Every other cell is left untouched.
+   * The AI reads every row and corrects ONLY Sender_Account_Type,
+   * Reciever_Account_Type, Account_Currency and Reciever_Currency from the
+   * Test_Case_Description text (the Scenarios column is NOT used).
+   * Every other cell is left untouched.
    */
   async function runMiniFix() {
     if (!file) return;
@@ -544,7 +403,6 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
       let json: {
         success?: boolean;
         error?: string;
-        ai?: AiInfo;
       } & QaData = {} as never;
       try {
         json = await res.json();
@@ -596,26 +454,8 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
         fixed: json.fixed,
         fixedBase64: json.fixedBase64,
       });
-      setAiInfo(
-        json.ai ?? {
-          available: false,
-          checkedRows: 0,
-          suggested: 0,
-          applied: 0,
-          summary: "",
-          fixes: [],
-        }
-      );
       setAiTouched(true);
-      setShowAiReport(true);
-      if (json.ai && !json.ai.available) {
-        setError(
-          json.ai.summary ||
-            "🤖 AI agent unavailable — account types unchanged."
-        );
-      } else {
-        setError(null);
-      }
+      setError(null);
     } catch {
       setError("Something went wrong. Please try again.");
     } finally {
@@ -690,7 +530,7 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
         <div style={{ minWidth: 0 }}>
           <div style={{ fontWeight: 700, fontSize: 14 }}>📊 Excel QA</div>
           <div style={{ fontSize: 11, opacity: 0.85 }}>
-            Unmerge + rename · 🤖 AI Fix vs reference template · type /qa ·
+            Unmerge + rename · 🪄 Auto Types · type /qa ·
             Esc to close
           </div>
         </div>
@@ -842,7 +682,7 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
 
             <button
               onClick={() => void runQa(file, selectedSheet)}
-              disabled={busy || aiBusy}
+              disabled={busy}
               style={{
                 marginLeft: "auto",
                 border: "none",
@@ -850,36 +690,15 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
                 padding: "8px 16px",
                 fontSize: 13,
                 fontWeight: 600,
-                cursor: busy || aiBusy ? "default" : "pointer",
+                cursor: busy ? "default" : "pointer",
                 background:
-                  busy || aiBusy
+                  busy
                     ? "#9fb0be"
                     : "linear-gradient(135deg,#10b981,#06b6d4)",
                 color: "#fff",
               }}
             >
               {busy ? "Running…" : "Run QA"}
-            </button>
-
-            <button
-              onClick={() => void runAiFix()}
-              disabled={busy || aiBusy || !file}
-              title="AI agent compares your sheet with the correct reference template and auto-fixes Service_Name, Sender account, Amount, Receiver account"
-              style={{
-                border: "none",
-                borderRadius: 8,
-                padding: "8px 16px",
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: busy || aiBusy || !file ? "default" : "pointer",
-                background:
-                  busy || aiBusy || !file
-                    ? "#b6a8e8"
-                    : "linear-gradient(135deg,#8b5cf6,#6366f1)",
-                color: "#fff",
-              }}
-            >
-              {aiBusy ? "🤖 AI checking…" : "✨ AI Fix"}
             </button>
 
             <button
@@ -946,38 +765,7 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
         </div>
       )}
 
-      {aiBusy && (
-        <div
-          style={{
-            flex: 1,
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 12,
-            color: "#6366f1",
-          }}
-        >
-          <span
-            style={{
-              width: 18,
-              height: 18,
-              borderRadius: "50%",
-              border: "2px solid #6366f1",
-              borderTopColor: "transparent",
-              animation: "qa-spin 0.8s linear infinite",
-            }}
-          />
-          <div style={{ fontWeight: 600 }}>🤖 AI agent is checking your file…</div>
-          <div style={{ fontSize: 12, color: "#6b7280", maxWidth: 420, textAlign: "center" }}>
-            Comparing every row with the correct reference template —
-            Service_Name, Sender account, Amount, Receiver account. This can
-            take up to a minute.
-          </div>
-        </div>
-      )}
-
-      {!busy && !aiBusy && data && (
+      {!busy && data && (
         <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, padding: "10px 14px" }}>
             {statChip("Sheets", data.sheetNames.length)}
@@ -988,149 +776,6 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
               data.serviceCol === null ? "column not found" : data.renameCount
             )}
           </div>
-
-          {/* ---- AI agent report ---- */}
-          {aiInfo && (
-            <div
-              style={{
-                margin: "0 14px 10px",
-                border: `1px solid ${aiInfo.available && aiInfo.applied > 0 ? "#c7d2fe" : "#e2e8f0"}`,
-                background:
-                  aiInfo.available && aiInfo.applied > 0 ? "#eef2ff" : "#f8fafc",
-                borderRadius: 10,
-                padding: "10px 12px",
-                flexShrink: 0,
-              }}
-            >
-              <div
-                onClick={() => setShowAiReport((v) => !v)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  cursor: "pointer",
-                  userSelect: "none",
-                }}
-              >
-                <span style={{ fontSize: 13, fontWeight: 700, color: "#4338ca" }}>
-                  🤖 AI Agent report
-                </span>
-                {aiInfo.available ? (
-                  <span
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 600,
-                      color: "#4338ca",
-                      background: "#e0e7ff",
-                      borderRadius: 999,
-                      padding: "2px 8px",
-                    }}
-                  >
-                    {aiInfo.applied} of {aiInfo.suggested} fixes applied
-                    {aiInfo.filled ? ` · ✨ ${aiInfo.filled} auto-filled` : ""}{" "}
-                    · {aiInfo.checkedRows} rows checked
-                  </span>
-                ) : (
-                  <span
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 600,
-                      color: "#92400e",
-                      background: "#fef3c7",
-                      borderRadius: 999,
-                      padding: "2px 8px",
-                    }}
-                  >
-                    AI unavailable — rule-based fixes only
-                  </span>
-                )}
-                <span style={{ marginLeft: "auto", fontSize: 11, color: "#6b7280" }}>
-                  {showAiReport ? "▾" : "▸"}
-                </span>
-              </div>
-
-              {showAiReport && (
-                <>
-                  {aiInfo.summary && (
-                    <div style={{ fontSize: 12, color: "#374151", margin: "6px 0 8px" }}>
-                      {aiInfo.summary}
-                    </div>
-                  )}
-                  {aiInfo.fixes.length > 0 && (
-                    <div
-                      style={{
-                        maxHeight: 150,
-                        overflowY: "auto",
-                        background: "#fff",
-                        border: "1px solid #e5e7eb",
-                        borderRadius: 8,
-                      }}
-                    >
-                      {aiInfo.fixes.map((f, i) => (
-                        <div
-                          key={`${f.row}-${f.column}-${i}`}
-                          style={{
-                            display: "flex",
-                            flexWrap: "wrap",
-                            alignItems: "baseline",
-                            gap: 6,
-                            padding: "6px 10px",
-                            borderTop: i === 0 ? "none" : "1px solid #f1f5f9",
-                            fontSize: 12,
-                          }}
-                        >
-                          <strong style={{ color: "#111827" }}>
-                            Row {f.row}
-                          </strong>
-                          <code
-                            style={{
-                              background: "#f1f5f9",
-                              borderRadius: 4,
-                              padding: "1px 5px",
-                              fontSize: 11,
-                            }}
-                          >
-                            {f.column}
-                          </code>
-                          {f.fill && (
-                            <span
-                              style={{
-                                fontSize: 10,
-                                fontWeight: 700,
-                                color: "#6d28d9",
-                                background: "#ede9fe",
-                                borderRadius: 999,
-                                padding: "1px 6px",
-                              }}
-                            >
-                              ✨ auto-filled
-                            </span>
-                          )}
-                          <span style={{ color: "#9ca3af", wordBreak: "break-all" }}>
-                            {trunc(f.from, 40) || "(empty)"}
-                          </span>
-                          <span style={{ color: "#6b7280" }}>→</span>
-                          <strong
-                            style={{ color: "#047857", wordBreak: "break-all" }}
-                          >
-                            {trunc(f.to, 40)}
-                          </strong>
-                          <span style={{ color: "#6b7280", flexBasis: "100%", fontSize: 11 }}>
-                            {trunc(f.reason, 110)}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {aiInfo.available && aiInfo.applied === 0 && (
-                    <div style={{ fontSize: 12, color: "#047857", marginTop: 4 }}>
-                      ✓ No AI corrections needed — rows match the reference.
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          )}
 
           <div style={{ display: "flex", gap: 4, padding: "0 14px" }}>
             {(["original", "fixed"] as const).map((tab) => (
@@ -1295,7 +940,7 @@ function statChip(label: string, value: string | number) {
 function downloadName(fileName: string, aiFixed = false): string {
   const base = fileName.replace(/\.[^.]+$/, "").trim() || "workbook";
   return aiFixed
-    ? `${base}_ai_fixed.xlsx`
+    ? `${base}_auto_types.xlsx`
     : `${base}_unmerged_renamed.xlsx`;
 }
 

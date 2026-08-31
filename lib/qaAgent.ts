@@ -869,22 +869,28 @@ export async function aiFixRows(
 // Every other cell is left untouched.
 // -------------------------------------------------------------------------
 
-const ACCOUNT_TYPE_SYSTEM_PROMPT = `You are a Wing Bank QA data assistant. You read ONE regression test-case row and decide the correct account TYPES at each end of the transaction. Reply ONLY with a strict JSON object and no prose:
-{"sender_account_type":"...","receiver_account_type":"...","reason":"one short sentence"}
+const ACCOUNT_TYPE_SYSTEM_PROMPT = `You are a Wing Bank QA data assistant. You read ONE regression test-case row and decide the correct account TYPES and CURRENCIES at each end of the transaction. Reply ONLY with a strict JSON object and no prose:
+{"sender_account_type":"...","receiver_account_type":"...","sender_currency":"...","receiver_currency":"...","reason":"one short sentence"}
 
 Rules:
-- The TYPE names the account KIND, never a currency.
-  "FC USD" -> type FC (9-digit Wing full bank account) holding USD.
-  "PSP KHR" -> type PSP (8-digit Wing app wallet starting with 0) holding KHR.
+- The TYPE names the account KIND, never a currency. Do NOT include "From", "To", or currency codes in the type.
+  "FC USD" -> type "FC" (9-digit Wing full bank account).
+  "PSP KHR" -> type "PSP" (8-digit Wing app wallet starting with 0).
 - Use ONLY the exact allowed types listed in the request; if none fits, keep the current value you were given.
+- IMPORTANT: The receiver type is ONLY the part after "From FC USD - ". Examples:
+  * "From FC USD - Cellcard" -> receiver_account_type = "Cellcard" (NOT "From FC USD - Cellcard")
+  * "From FC USD - Wing QR Customer static tag29 USD" -> receiver_account_type = "Wing QR Customer static tag29 USD"
+  * "From FC USD - Wing QR Merchant static tag29 KHR" -> receiver_account_type = "Wing QR Merchant static tag29 KHR"
 - "From FC USD - Cellcard/Metfone/Smart" -> sender "FC", receiver "Operator".
-- "From FC USD - Wing QR <customer|merchant>" -> the receiver type is whatever the allowed receiver types call that QR wallet.
 - A plain "Phone Number", "EDC", "ABA Bank", "Bakong wallet", "Merchant App PSP/FC", "Customer QR OtherBank", "Merchant QR Other Bank", "Advanced Bank of Asia Ltd", "Angkor Hospital" is itself a type.
-- In most cases both ends are Wing wallets: type FC on both sides (Wallet -> Wallet).`;
+- In most cases both ends are Wing wallets: type FC on both sides (Wallet -> Wallet).
+- For currencies: extract the 3-letter currency code (USD, KHR, THB) from the text. The format is typically "From <sender_type> <sender_currency> - <receiver_info> <receiver_currency>". If only one currency is mentioned, both ends use that currency.`;
 
 interface AccountTypeVerdict {
   sender: string;
   receiver: string;
+  senderCurrency: string;
+  receiverCurrency: string;
   reason: string;
 }
 
@@ -915,15 +921,22 @@ async function askAccountTypeVerdict(input: {
   const sender = String(
     raw.sender_account_type ?? raw.senderAccountType ?? ""
   ).trim();
-  const receiver = String(
+  let receiver = String(
     raw.receiver_account_type ??
       raw.receiverAccountType ??
       raw.reciever_account_type ??
       ""
   ).trim();
+  // Clean up receiver: remove "From ... - " prefix if AI included it
+  const fromPrefix = /^from\s+.*?\s*-\s*/i;
+  if (fromPrefix.test(receiver)) {
+    receiver = receiver.replace(fromPrefix, "").trim();
+  }
+  const senderCurrency = String(raw.sender_currency ?? raw.senderCurrency ?? "").trim().toUpperCase();
+  const receiverCurrency = String(raw.receiver_currency ?? raw.receiverCurrency ?? "").trim().toUpperCase();
   const reason = String(raw.reason ?? "").trim().slice(0, 160);
   if (!sender && !receiver) return null;
-  return { sender, receiver, reason };
+  return { sender, receiver, senderCurrency, receiverCurrency, reason };
 }
 
 /**
@@ -941,6 +954,26 @@ function pickAccountType(vocab: string[], verdict: string): string | null {
     if (ik && ik.length > 1 && (v.includes(ik) || ik.includes(v))) {
       return item;
     }
+  }
+  return null;
+}
+
+/**
+ * Match a currency code from the AI against the reference vocabulary.
+ * Handles cases where the AI returns "USD", "usd", "FC USD", etc.
+ */
+function pickCurrency(vocab: string[], verdict: string): string | null {
+  if (!verdict) return null;
+  const upper = verdict.toUpperCase().trim();
+  // Direct match
+  const exact = vocab.find((c) => c.toUpperCase() === upper);
+  if (exact) return exact;
+  // Extract 3-letter currency code from text like "FC USD" or "USD - something"
+  const match = upper.match(/\b(USD|KHR|THB|EUR|GBP|JPY|CNY|SGD|MYR|VND|LAK|MMK|BND|PHP|IDR|AUD|CAD|CHF|HKD|INR|KRW|NZD)\b/);
+  if (match) {
+    const code = match[1];
+    const canonical = vocab.find((c) => c.toUpperCase() === code);
+    if (canonical) return canonical;
   }
   return null;
 }
@@ -1054,6 +1087,36 @@ export async function miniFixAccountTypes(
           });
         }
       }
+      // Handle Account_Currency
+      if (senderCurrCol !== undefined && verdict.senderCurrency) {
+        const current = String(rows[batch[k].idx]?.[senderCurrCol] ?? "").trim();
+        const to = pickCurrency(profile.currencies, verdict.senderCurrency);
+        if (to && to.toUpperCase() !== current.toUpperCase()) {
+          fixes.push({
+            row: rowNum,
+            column: headers[senderCurrCol],
+            from: current,
+            to,
+            reason: "Auto-corrected Account_Currency from the row text",
+            fill: current === "",
+          });
+        }
+      }
+      // Handle Reciever_Currency
+      if (receiverCurrCol !== undefined && verdict.receiverCurrency) {
+        const current = String(rows[batch[k].idx]?.[receiverCurrCol] ?? "").trim();
+        const to = pickCurrency(profile.currencies, verdict.receiverCurrency);
+        if (to && to.toUpperCase() !== current.toUpperCase()) {
+          fixes.push({
+            row: rowNum,
+            column: headers[receiverCurrCol],
+            from: current,
+            to,
+            reason: "Auto-corrected Reciever_Currency from the row text",
+            fill: current === "",
+          });
+        }
+      }
     });
   }
 
@@ -1063,8 +1126,8 @@ export async function miniFixAccountTypes(
     fixes: fixes.slice(0, 400),
     summary:
       fixes.length > 0
-        ? `🪄 Checked ${candidates.length} row(s) with the AI and corrected ${fixes.length} account-type cell(s) — only Sender_Account_Type / Reciever_Account_Type were changed.`
-        : "🪄 No Sender/Receiver account-type corrections were needed.",
+        ? `🪄 Checked ${candidates.length} row(s) with the AI and corrected ${fixes.length} cell(s) — only Sender_Account_Type / Reciever_Account_Type / Account_Currency / Reciever_Currency were changed.`
+        : "🪄 No account-type or currency corrections were needed.",
   };
 }
 

@@ -25,9 +25,9 @@ export const maxDuration = 60;
  *   1. Deterministic QA (lib/excelLogic.ts): unmerge + Service_Name rename.
  *   2. For EVERY data row ask the AI (configured provider, free Pollinations
  *      fallback) to read the row's Test_Case_Description (the Scenarios
- *      column is NOT used) and return the correct Sender_Account_Type and
- *      Reciever_Account_Type.
- *   3. Apply ONLY those two column fixes — every other cell is untouched —
+ *      column is NOT used) and return the correct Sender_Account_Type,
+ *      Reciever_Account_Type, Account_Currency and Reciever_Currency.
+ *   3. Apply ONLY those four column fixes — every other cell is untouched —
  *      then return the fixed workbook + report.
  *
  * Body: multipart/form-data — file (required), key (required; lib/qaKey.ts),
