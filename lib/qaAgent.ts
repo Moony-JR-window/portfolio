@@ -5,6 +5,7 @@ import {
   sheetToAoa,
   detectServiceHeaderRow,
   normalizeTextKey,
+  normalizeServiceName,
 } from "./excelLogic";
 
 /**
@@ -55,6 +56,13 @@ export interface ServiceStat {
   senderAccounts: string[];
   /** Known Receiver_Account values (for filling empty accounts). */
   receiverAccounts: string[];
+  /** Most frequent reference value per column — used by the deterministic
+   *  auto-fill pass so all rows get filled even when the AI is unreachable. */
+  modeAmount?: string;
+  modeSenderType?: string;
+  modeReceiverType?: string;
+  modeSenderAccount?: string;
+  modeReceiverAccount?: string;
 }
 
 export interface ReferenceProfile {
@@ -88,15 +96,6 @@ function cap(set: Set<string>, n: number, maxLen = 80): string[] {
     .filter((s) => s.length > 0)
     .slice(0, n)
     .map((s) => (s.length > maxLen ? s.slice(0, maxLen) + "…" : s));
-}
-
-/**
- * Like `cap` but validation-grade: over-long values are DROPPED (never
- * truncated with an ellipsis) so every kept entry is an exact value that
- * auto-input fills can be checked against.
- */
-function capExact(set: Set<string>, n: number, maxLen: number): string[] {
-  return [...set].filter((s) => s.length > 0 && s.length <= maxLen).slice(0, n);
 }
 
 let profilePromise: Promise<ReferenceProfile | null> | null = null;
@@ -183,11 +182,11 @@ function extractProfile(wb: ExcelJS.Workbook): ReferenceProfile {
     const statsByService: Record<
       string,
       {
-        amounts: Set<string>;
-        senderTypes: Set<string>;
-        receiverTypes: Set<string>;
-        senderAccounts: Set<string>;
-        receiverAccounts: Set<string>;
+        amounts: Map<string, number>;
+        senderTypes: Map<string, number>;
+        receiverTypes: Map<string, number>;
+        senderAccounts: Map<string, number>;
+        receiverAccounts: Map<string, number>;
       }
     > = {};
 
@@ -216,37 +215,27 @@ function extractProfile(wb: ExcelJS.Workbook): ReferenceProfile {
 
       const service = serviceIdx >= 0 ? text(cell(serviceIdx)) : "";
       if (service) {
-        const stat = (statsByService[looseKey(service)] ||= {
-          amounts: new Set<string>(),
-          senderTypes: new Set<string>(),
-          receiverTypes: new Set<string>(),
-          senderAccounts: new Set<string>(),
-          receiverAccounts: new Set<string>(),
+        // Key the stats by the CANONICAL service name so a new template that
+        // writes services with different wording ("QR Pay (Scan)" vs the
+        // reference's "QR Pay") still maps onto the same reference stats.
+        const canonical = normalizeServiceName(service);
+        const statKey = looseKey(canonical || service);
+        const bump = (m: Map<string, number>, v: string) => {
+          if (v) m.set(v, (m.get(v) || 0) + 1);
+        };
+        const stat = (statsByService[statKey] ||= {
+          amounts: new Map<string, number>(),
+          senderTypes: new Map<string, number>(),
+          receiverTypes: new Map<string, number>(),
+          senderAccounts: new Map<string, number>(),
+          receiverAccounts: new Map<string, number>(),
         });
-        if (amountIdx >= 0) {
-          const a = text(cell(amountIdx));
-          if (a) stat.amounts.add(a);
-        }
-        if (receiverAmountIdx >= 0) {
-          const a = text(cell(receiverAmountIdx));
-          if (a) stat.amounts.add(a);
-        }
-        if (senderTypeIdx >= 0) {
-          const t = text(cell(senderTypeIdx));
-          if (t) stat.senderTypes.add(t);
-        }
-        if (receiverTypeIdx >= 0) {
-          const t = text(cell(receiverTypeIdx));
-          if (t) stat.receiverTypes.add(t);
-        }
-        if (senderAcctIdx >= 0) {
-          const a = text(cell(senderAcctIdx));
-          if (a) stat.senderAccounts.add(a);
-        }
-        if (receiverAcctIdx >= 0) {
-          const a = text(cell(receiverAcctIdx));
-          if (a) stat.receiverAccounts.add(a);
-        }
+        if (amountIdx >= 0) bump(stat.amounts, text(cell(amountIdx)));
+        if (receiverAmountIdx >= 0) bump(stat.amounts, text(cell(receiverAmountIdx)));
+        if (senderTypeIdx >= 0) bump(stat.senderTypes, text(cell(senderTypeIdx)));
+        if (receiverTypeIdx >= 0) bump(stat.receiverTypes, text(cell(receiverTypeIdx)));
+        if (senderAcctIdx >= 0) bump(stat.senderAccounts, text(cell(senderAcctIdx)));
+        if (receiverAcctIdx >= 0) bump(stat.receiverAccounts, text(cell(receiverAcctIdx)));
       }
     }
 
@@ -262,13 +251,32 @@ function extractProfile(wb: ExcelJS.Workbook): ReferenceProfile {
     for (const [type, accts] of Object.entries(receiverByType)) {
       profile.receiverAccountSamplesByType[type] = cap(accts, 2, 24);
     }
+    // Most-common value from a value->count map (ties keep first-seen order).
+    const modeOf = (m: Map<string, number>): string | undefined =>
+      [...m.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+    // Sorted by frequency then capped, for the AI-prompt vocabulary lists.
+    const freq = (
+      m: Map<string, number>,
+      n: number,
+      maxLen: number
+    ): string[] =>
+      [...m.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([v]) => v)
+        .filter((v) => v.length > 0 && v.length <= maxLen)
+        .slice(0, n);
     for (const [sk, s] of Object.entries(statsByService)) {
       profile.serviceStats[sk] = {
-        amounts: capExact(s.amounts, 6, 12),
-        senderTypes: capExact(s.senderTypes, 4, 20),
-        receiverTypes: capExact(s.receiverTypes, 4, 40),
-        senderAccounts: capExact(s.senderAccounts, 3, 24),
-        receiverAccounts: capExact(s.receiverAccounts, 2, 60),
+        amounts: freq(s.amounts, 6, 12),
+        senderTypes: freq(s.senderTypes, 4, 20),
+        receiverTypes: freq(s.receiverTypes, 4, 40),
+        senderAccounts: freq(s.senderAccounts, 3, 24),
+        receiverAccounts: freq(s.receiverAccounts, 2, 60),
+        modeAmount: modeOf(s.amounts),
+        modeSenderType: modeOf(s.senderTypes),
+        modeReceiverType: modeOf(s.receiverTypes),
+        modeSenderAccount: modeOf(s.senderAccounts),
+        modeReceiverAccount: modeOf(s.receiverAccounts),
       };
     }
     break; // first sheet carrying Service_Name is the testcase sheet
@@ -538,6 +546,146 @@ function parseAmount(value: string): number | null {
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
+/**
+ * Newer regression templates write a few logical services under different
+ * names than the 1.5 reference ("Wing to Other Banks (Local Bank via Bakong)"
+ * vs the reference's "Transfer to Local Bank via Bakong"). This maps the new
+ * workbook wording back to the reference-service loose key so per-service
+ * auto-fill stats are still found. Keys/values are looseKey() forms.
+ */
+const SERVICE_ALIASES: Record<string, string> = {
+  "wing to other banks local bank via bakong": "transfer to local bank via bakong",
+  "wing to other banks local bank via ncs": "wing to other banks ncs",
+  "wing to other banks bakong wallet": "fund transfer bakong wallet",
+  "wing to other banks direct bank": "transfer direct to other bank aba",
+  "khqr bakong wallet": "qr payment khqr bakong wallet",
+};
+
+/**
+ * Resolve the per-service reference statistics for a Service_Name as written
+ * in a dropped workbook. Lookup order:
+ *   1. exact loose key,
+ *   2. SERVICE_ALIASES (renamed services on newer templates),
+ *   3. canonical key produced by normalizeServiceName (handles "QR Pay (Scan)"
+ *      -> "QR Pay"),
+ *   4. longest reference loose key contained in the supplied one.
+ */
+function resolveServiceStat(
+  service: string,
+  profile: ReferenceProfile
+): ServiceStat | undefined {
+  const k = looseKey(service);
+  if (!k) return undefined;
+  if (profile.serviceStats[k]) return profile.serviceStats[k];
+  const alias = SERVICE_ALIASES[k];
+  if (alias && profile.serviceStats[alias]) return profile.serviceStats[alias];
+  const canonical = normalizeServiceName(service);
+  const ck = canonical ? looseKey(canonical) : "";
+  if (ck && ck !== k && profile.serviceStats[ck]) return profile.serviceStats[ck];
+  let best: ServiceStat | undefined;
+  let bestLen = 0;
+  for (const [sk, stat] of Object.entries(profile.serviceStats)) {
+    if (sk && sk.length > bestLen && k.includes(sk)) {
+      best = stat;
+      bestLen = sk.length;
+    }
+  }
+  return best;
+}
+
+/**
+ * Deterministic auto-fill: for EVERY data row fill the empty QA cells
+ * (Amount, Receiver Amount, Sender/Receiver account types, Sender/Receiver
+ * accounts) with the reference's most-common per-service value. This runs
+ * regardless of the AI (which only checks the first maxRows rows), so
+ * "missing input" cannot survive anywhere the reference has an answer.
+ */
+export function autoFillFromReference(
+  headers: string[],
+  rows: string[][],
+  profile: ReferenceProfile
+): AiFix[] {
+  const colByKey = new Map<string, number>();
+  (headers || []).forEach((h, i) => {
+    const k = headerKey(h);
+    if (k && !colByKey.has(k)) colByKey.set(k, i);
+  });
+  const serviceColIdx = colByKey.get("servicename");
+  if (serviceColIdx === undefined) return [];
+
+  const receiverTypeColIdx =
+    colByKey.get("recieveraccounttype") ?? colByKey.get("receiveraccounttype");
+
+  const out: AiFix[] = [];
+  for (let r = 0; r < rows.length; r++) {
+    const service = String(rows[r]?.[serviceColIdx] ?? "").trim();
+    if (!service) continue;
+    const stat = resolveServiceStat(service, profile);
+    if (!stat) continue;
+
+    const rowNum = r + 1; // 1-based data-row number
+    // Pick the most-common reference value for the given column, skipping
+    // rows where that cell already has data.
+    const set = (colKey: string, value: string | undefined): void => {
+      const colIdx = colByKey.get(colKey);
+      if (colIdx === undefined || !value) return;
+      const current = String(rows[r]?.[colIdx] ?? "").trim();
+      if (current !== "") return;
+      out.push({
+        row: rowNum,
+        column: headers[colIdx],
+        from: current,
+        to: value,
+        reason: "Auto-filled from the reference template for this service",
+        fill: true,
+      });
+    };
+
+    // Match the account shape to the row's account type so a PSP row never
+    // receives an FC account number (or vice-versa).
+    const shapeFor = (type: string): RegExp | null => {
+      const t = looseKey(type);
+      if (t === "psp") return /^\d{8}$/;
+      if (t === "fc") return /^\d{9}$/;
+      return null;
+    };
+    const pickAccount = (
+      list: string[] | undefined,
+      mode: string | undefined,
+      type: string
+    ): string | undefined => {
+      const shape = shapeFor(type);
+      if (shape) {
+        const match = (list || []).find((a) => shape.test(a));
+        if (match) return match;
+      }
+      return mode;
+    };
+
+    const senderType = String(
+      rows[r]?.[colByKey.get("senderaccounttype") ?? -1] ?? ""
+    ).trim();
+    const receiverType = String(
+      rows[r]?.[receiverTypeColIdx ?? -1] ?? ""
+    ).trim();
+
+    set("amount", stat.modeAmount);
+    set("receiveramount", stat.modeAmount);
+    set("senderaccounttype", stat.modeSenderType);
+    set("recieveraccounttype", stat.modeReceiverType);
+    set("receiveraccounttype", stat.modeReceiverType);
+    set(
+      "senderaccount",
+      pickAccount(stat.senderAccounts, stat.modeSenderAccount, senderType)
+    );
+    set(
+      "receiveraccount",
+      pickAccount(stat.receiverAccounts, stat.modeReceiverAccount, receiverType)
+    );
+  }
+  return out.slice(0, 400);
+}
+
 /** Rough token estimate (~3.5 chars/token) used to size AI batches. */
 function estimateTokens(text: string): number {
   return Math.ceil((text || "").length / 3.5);
@@ -599,7 +747,7 @@ export async function aiFixRows(
     }
     const perServiceRef: Record<string, ServiceStat> = {};
     for (const s of used) {
-      const stat = profile.serviceStats[s];
+      const stat = resolveServiceStat(s, profile);
       if (stat) perServiceRef[s] = stat;
     }
     return (
@@ -664,12 +812,27 @@ export async function aiFixRows(
     lastChecked = checked;
   }
 
+  // Deterministic pass: fill empty QA cells for EVERY row from the per-service
+  // reference stats. Runs regardless of the AI so "missing input" cannot
+  // survive anywhere the reference has an answer (rows beyond the AI's
+  // checked window included).
+  const baseFills = autoFillFromReference(headers, rows, profile);
+  const mergeFills = (fixes: AiFix[]): AiFix[] => {
+    const merged = new Map<string, AiFix>();
+    for (const f of baseFills) merged.set(`${f.row}||${headerKey(f.column)}`, f);
+    for (const f of fixes) merged.set(`${f.row}||${headerKey(f.column)}`, f);
+    return [...merged.values()].slice(0, 400);
+  };
+
   if (!raw) {
     return {
       ...base,
       checkedRows: lastChecked,
+      fixes: baseFills,
       summary:
-        "AI agent unreachable or payload still too large for the configured AI plan — applied rule-based fixes only.",
+        baseFills.length
+          ? `AI agent unreachable — filled ${baseFills.length} missing input(s) from the reference template.`
+          : "AI agent unreachable or payload still too large for the configured AI plan — applied rule-based fixes only.",
     };
   }
 
@@ -684,7 +847,212 @@ export async function aiFixRows(
     console.log(`[qaAgent] rejected ${rejected} unsafe/hallucinated fix(es)`);
   }
 
-  return { available: true, summary, fixes, checkedRows: checked };
+  return { available: true, summary, fixes: mergeFills(fixes), checkedRows: checked };
+}
+
+// -------------------------------------------------------------------------
+// "🪄 Auto Types" mini-fix — correct ONLY Sender_Account_Type /
+// Reciever_Account_Type from the row's descriptive text, using the AI.
+// Every other cell is left untouched.
+// -------------------------------------------------------------------------
+
+const ACCOUNT_TYPE_SYSTEM_PROMPT = `You are a Wing Bank QA data assistant. You read ONE regression test-case row and decide the correct account TYPES at each end of the transaction. Reply ONLY with a strict JSON object and no prose:
+{"sender_account_type":"...","receiver_account_type":"...","reason":"one short sentence"}
+
+Rules:
+- The TYPE names the account KIND, never a currency.
+  "FC USD" -> type FC (9-digit Wing full bank account) holding USD.
+  "PSP KHR" -> type PSP (8-digit Wing app wallet starting with 0) holding KHR.
+- Use ONLY the exact allowed types listed in the request; if none fits, keep the current value you were given.
+- "From FC USD - Cellcard/Metfone/Smart" -> sender "FC", receiver "Operator".
+- "From FC USD - Wing QR <customer|merchant>" -> the receiver type is whatever the allowed receiver types call that QR wallet.
+- A plain "Phone Number", "EDC", "ABA Bank", "Bakong wallet", "Merchant App PSP/FC", "Customer QR OtherBank", "Merchant QR Other Bank", "Advanced Bank of Asia Ltd", "Angkor Hospital" is itself a type.
+- In most cases both ends are Wing wallets: type FC on both sides (Wallet -> Wallet).`;
+
+interface AccountTypeVerdict {
+  sender: string;
+  receiver: string;
+  reason: string;
+}
+
+/** Ask the AI for one row's account types (configured provider, free
+ *  Pollinations fallback). Returns null when the AI did not answer usable. */
+async function askAccountTypeVerdict(input: {
+  service: string;
+  text: string;
+  senderCurrency: string;
+  receiverCurrency: string;
+  currentSender: string;
+  currentReceiver: string;
+  allowedSender: string[];
+  allowedReceiver: string[];
+}): Promise<AccountTypeVerdict | null> {
+  const user = [
+    `Service_Name: ${input.service || "?"}`,
+    `Row text: ${input.text || "?"}`,
+    `Current Sender_Account_Type: ${input.currentSender || "(empty)"}`,
+    `Current Reciever_Account_Type: ${input.currentReceiver || "(empty)"}`,
+    `Sender currency: ${input.senderCurrency || "?"}`,
+    `Receiver currency: ${input.receiverCurrency || "?"}`,
+    `Allowed SENDER account types: ${JSON.stringify(input.allowedSender)}`,
+    `Allowed RECEIVER account types: ${JSON.stringify(input.allowedReceiver)}`,
+  ].join("\n");
+  const raw = await askAiJson(ACCOUNT_TYPE_SYSTEM_PROMPT, user);
+  if (!raw) return null;
+  const sender = String(
+    raw.sender_account_type ?? raw.senderAccountType ?? ""
+  ).trim();
+  const receiver = String(
+    raw.receiver_account_type ??
+      raw.receiverAccountType ??
+      raw.reciever_account_type ??
+      ""
+  ).trim();
+  const reason = String(raw.reason ?? "").trim().slice(0, 160);
+  if (!sender && !receiver) return null;
+  return { sender, receiver, reason };
+}
+
+/**
+ * Verify the AI's verdict against the reference vocabulary. The model may
+ * answer "FC USD" when the list only has "FC" — the type word is matched by
+ * containment, then canonicalized to the reference spelling.
+ */
+function pickAccountType(vocab: string[], verdict: string): string | null {
+  const v = looseKey(verdict);
+  if (!v) return null;
+  const exact = canonicalFromList(vocab, verdict);
+  if (exact) return exact;
+  for (const item of vocab) {
+    const ik = looseKey(item);
+    if (ik && ik.length > 1 && (v.includes(ik) || ik.includes(v))) {
+      return item;
+    }
+  }
+  return null;
+}
+
+/**
+ * "🪄 Auto Types" mini-fix: for EVERY data row, ask the AI (configured
+ * provider first, free Pollinations fallback) to read the row's
+ * Test_Case_Description (the Scenarios column is NOT used) and return the
+ * correct Sender_Account_Type and Reciever_Account_Type. Only those two
+ * columns are ever changed — everything else in the row is preserved. Rows
+ * are queried in small parallel batches so a full 60+ row sheet finishes
+ * well under the serverless timeout.
+ */
+export async function miniFixAccountTypes(
+  headers: string[],
+  rows: string[][],
+  profile: ReferenceProfile,
+  maxRows = 250
+): Promise<AiAgentResult> {
+  const base: AiAgentResult = {
+    available: false,
+    summary: "",
+    fixes: [],
+    checkedRows: 0,
+  };
+  const colByKey = new Map<string, number>();
+  headers.forEach((h, i) => {
+    const k = headerKey(h);
+    if (k && !colByKey.has(k)) colByKey.set(k, i);
+  });
+  const senderCol = colByKey.get("senderaccounttype");
+  const receiverCol =
+    colByKey.get("recieveraccounttype") ?? colByKey.get("receiveraccounttype");
+  if (senderCol === undefined && receiverCol === undefined) return base;
+  const serviceCol = colByKey.get("servicename");
+  // Row text comes ONLY from Test_Case_Description — the Scenarios column is
+  // deliberately NOT used for account-type detection.
+  const descCol = colByKey.get("testcasedescription");
+  const senderCurrCol = colByKey.get("accountcurrency");
+  const receiverCurrCol =
+    colByKey.get("recievercurrency") ?? colByKey.get("receivercurrency");
+
+  const limit = Math.min(rows.length, maxRows);
+  const candidates: { idx: number; service: string; text: string }[] = [];
+  for (let r = 0; r < limit; r++) {
+    const row = rows[r];
+    const service = String(row?.[serviceCol ?? -1] ?? "").trim();
+    const desc = String(row?.[descCol ?? -1] ?? "").trim();
+    const text = desc || service;
+    if (text) candidates.push({ idx: r, service, text });
+  }
+  if (!candidates.length) return base;
+
+  const fixes: AiFix[] = [];
+  const BATCH = 5; // small parallel fan-out keeps 58-row sheets under 60s
+  for (let i = 0; i < candidates.length; i += BATCH) {
+    const batch = candidates.slice(i, i + BATCH);
+    const verdicts = await Promise.all(
+      batch.map((c) =>
+        askAccountTypeVerdict({
+          service: c.service,
+          text: c.text,
+          senderCurrency: String(
+            rows[c.idx]?.[senderCurrCol ?? -1] ?? ""
+          ).trim(),
+          receiverCurrency: String(
+            rows[c.idx]?.[receiverCurrCol ?? -1] ?? ""
+          ).trim(),
+          currentSender: String(rows[c.idx]?.[senderCol ?? -1] ?? "").trim(),
+          currentReceiver: String(rows[c.idx]?.[receiverCol ?? -1] ?? "").trim(),
+          allowedSender: profile.senderAccountTypes,
+          allowedReceiver: profile.receiverAccountTypes,
+        })
+      )
+    );
+    verdicts.forEach((verdict, k) => {
+      if (!verdict) return;
+      const rowNum = batch[k].idx + 1;
+      if (senderCol !== undefined) {
+        const current = String(rows[batch[k].idx]?.[senderCol] ?? "").trim();
+        const to = pickAccountType(profile.senderAccountTypes, verdict.sender);
+        if (to && looseKey(to) !== looseKey(current)) {
+          fixes.push({
+            row: rowNum,
+            column: headers[senderCol],
+            from: current,
+            to,
+            reason:
+              verdict.reason ||
+              "Auto-corrected Sender_Account_Type from the row text",
+            fill: current === "",
+          });
+        }
+      }
+      if (receiverCol !== undefined) {
+        const current = String(rows[batch[k].idx]?.[receiverCol] ?? "").trim();
+        const to = pickAccountType(
+          profile.receiverAccountTypes,
+          verdict.receiver
+        );
+        if (to && looseKey(to) !== looseKey(current)) {
+          fixes.push({
+            row: rowNum,
+            column: headers[receiverCol],
+            from: current,
+            to,
+            reason:
+              verdict.reason ||
+              "Auto-corrected Reciever_Account_Type from the row text",
+            fill: current === "",
+          });
+        }
+      }
+    });
+  }
+
+  return {
+    available: fixes.length > 0,
+    checkedRows: candidates.length,
+    fixes: fixes.slice(0, 400),
+    summary:
+      fixes.length > 0
+        ? `🪄 Checked ${candidates.length} row(s) with the AI and corrected ${fixes.length} account-type cell(s) — only Sender_Account_Type / Reciever_Account_Type were changed.`
+        : "🪄 No Sender/Receiver account-type corrections were needed.",
+  };
 }
 
 /**
@@ -777,9 +1145,10 @@ export function sanitizeAiFixes(
     // Service_Name. Fills without reference backing are rejected.
     const stat =
       isFill && serviceColIdx >= 0
-        ? profile.serviceStats[
-            looseKey(String(rows[rowNum - 1]?.[serviceColIdx] ?? ""))
-          ]
+        ? resolveServiceStat(
+            String(rows[rowNum - 1]?.[serviceColIdx] ?? ""),
+            profile
+          )
         : undefined;
 
     // Column-specific validation + canonical-casing rewrite.

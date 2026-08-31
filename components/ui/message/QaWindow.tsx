@@ -206,6 +206,9 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
   const [aiBusy, setAiBusy] = useState(false);
   const [aiInfo, setAiInfo] = useState<AiInfo | null>(null);
   const [showAiReport, setShowAiReport] = useState(true);
+
+  // ---- 🪄 Auto Types state (POST /api/qa/mini-fix) ----
+  const [miniBusy, setMiniBusy] = useState(false);
   const [aiTouched, setAiTouched] = useState(false);
 
   // Esc leaves fullscreen while maximized; closes the window otherwise.
@@ -513,6 +516,113 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
     }
   }
 
+  /**
+   * "🪄 Auto Types" — send the workbook through POST /api/qa/mini-fix.
+   * The AI reads every row and corrects ONLY Sender_Account_Type /
+   * Reciever_Account_Type from the Test_Case_Description text (the Scenarios
+   * column is NOT used). Every other cell is left untouched.
+   */
+  async function runMiniFix() {
+    if (!file) return;
+    const key = accessKey.trim();
+    if (!key) {
+      setNeedsKey(true);
+      setError("🔑 Enter the QA access key, then press 🪄 Auto Types.");
+      return;
+    }
+    setNeedsKey(false);
+    setMiniBusy(true);
+    setError(null);
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      body.append("sheet", selectedSheet);
+      body.append("headerRow", headerRowStr);
+      body.append("key", key);
+
+      const res = await fetch("/api/qa/mini-fix", { method: "POST", body });
+      let json: {
+        success?: boolean;
+        error?: string;
+        ai?: AiInfo;
+      } & QaData = {} as never;
+      try {
+        json = await res.json();
+      } catch {
+        // non-JSON (e.g. platform 504 page)
+      }
+
+      if (!res.ok || !json.success) {
+        if (json.error) {
+          setError(json.error);
+        } else {
+          setError(
+            res.status === 504
+              ? "The AI call timed out on the server (HTTP 504). Try again."
+              : `🪄 Auto Types failed. Server responded HTTP ${res.status}.`
+          );
+        }
+        return;
+      }
+
+      if (json.fixedBase64) {
+        const bin = atob(json.fixedBase64);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        setDownloadUrl(
+          URL.createObjectURL(
+            new Blob([bytes], {
+              type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            })
+          )
+        );
+      }
+
+      setSheetNames(json.sheetNames);
+      setSelectedSheet(json.sheetName);
+      setHeaderRowStr(String(json.headerRow));
+      setActiveTab("fixed");
+      setData({
+        fileName: json.fileName,
+        sheetNames: json.sheetNames,
+        sheetName: json.sheetName,
+        headerRow: json.headerRow,
+        totalRows: json.totalRows,
+        previewRows: json.previewRows,
+        unmergedRanges: json.unmergedRanges,
+        serviceCol: json.serviceCol,
+        renameCount: json.renameCount,
+        original: json.original,
+        fixed: json.fixed,
+        fixedBase64: json.fixedBase64,
+      });
+      setAiInfo(
+        json.ai ?? {
+          available: false,
+          checkedRows: 0,
+          suggested: 0,
+          applied: 0,
+          summary: "",
+          fixes: [],
+        }
+      );
+      setAiTouched(true);
+      setShowAiReport(true);
+      if (json.ai && !json.ai.available) {
+        setError(
+          json.ai.summary ||
+            "🤖 AI agent unavailable — account types unchanged."
+        );
+      } else {
+        setError(null);
+      }
+    } catch {
+      setError("Something went wrong. Please try again.");
+    } finally {
+      setMiniBusy(false);
+    }
+  }
+
   const windowStyle: React.CSSProperties = maximized
     ? {
         position: "fixed",
@@ -770,6 +880,27 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
               }}
             >
               {aiBusy ? "🤖 AI checking…" : "✨ AI Fix"}
+            </button>
+
+            <button
+              onClick={() => void runMiniFix()}
+              disabled={busy || miniBusy || !file}
+              title="AI reads every row and corrects ONLY Sender_Account_Type / Reciever_Account_Type — every other cell is left untouched"
+              style={{
+                border: "none",
+                borderRadius: 8,
+                padding: "8px 16px",
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: busy || miniBusy || !file ? "default" : "pointer",
+                background:
+                  busy || miniBusy || !file
+                    ? "#beb8d8"
+                    : "linear-gradient(135deg,#a855f7,#ec4899)",
+                color: "#fff",
+              }}
+            >
+              {miniBusy ? "🪄 checking…" : "🪄 Auto Types"}
             </button>
           </div>
         )}
