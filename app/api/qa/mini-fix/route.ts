@@ -57,10 +57,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Access-key gate — skip when Free AI mode (anonymous). Default to
+    // Access-key gate — key required for all modes. Default to
     // "deepseek" for backward compatibility with old clients.
         const aiMode = String(formData.get("aiMode") || "deepseek");
-    if (aiMode !== "free" && !isValidQaKey(formData.get("key"))) {
+    if (!isValidQaKey(formData.get("key"))) {
       return NextResponse.json(
         { success: false, error: "Invalid or missing QA access key." },
         { status: 403 }

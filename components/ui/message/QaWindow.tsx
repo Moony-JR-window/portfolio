@@ -9,9 +9,8 @@ import { useEffect, useRef, useState } from "react";
  * but instead of an AI chat it is a QA tool that reuses the exact logic from
  * the standalone `excel_rename.py` (single-file, keep logic style):
  *   • Drop / upload a .xlsx / .xlsm workbook — QA runs automatically.
- *   • AI mode selector — 🔑 DeepSeek (access key required, validated on the
- *     server by lib/qaKey.ts — the testing key is "1234") or 🆓 Free AI
- *     (anonymous, no key needed).
+ *   • AI mode selector — 🔑 DeepSeek or 🆓 Free AI (both require access key,
+ *     validated on the server by lib/qaKey.ts — the testing key is "1234").
  *   • Pick the sheet + header row, click "Run QA".
  *   • The server unmerges every merged range and renames the Service_Name
  *     column to its canonical SERVICE key.
@@ -331,16 +330,14 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
   const [miniBusy, setMiniBusy] = useState(false);
   const [aiTouched, setAiTouched] = useState(false);
 
-  // ---- AI mode: DeepSeek (key-gated) vs Free AI (anonymous) ----
-  const [aiMode, setAiMode] = useState<"deepseek" | "free">("deepseek");
+  // ---- AI mode: DeepSeek vs Free AI (both require access key) ----
+  const [aiMode, setAiMode] = useState<"deepseek" | "free">("free");
     // ---- Free AI provider selector ----
   type FreeProvider = "moonybot" | "deepseek" | "other";
   const [freeProvider, setFreeProvider] = useState<FreeProvider>("moonybot");
   const [showComingSoon, setShowComingSoon] = useState(false);
   // Map the free-provider picker to the backend QaProvider hint that selects
-  // the actual endpoint (Groq default / DeepSeek / keyless). Only sent when the
-  // window is in anonymous Free AI mode so keyed DeepSeek still uses the access
-  // key path.
+  // the actual endpoint (Groq default / DeepSeek / other).
   const providerHint: string =
     aiMode === "free"
       ? freeProvider === "moonybot"
@@ -503,8 +500,8 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
     // Cache the file for persistence across browser sessions
     setCachedFileName(next.name);
     void saveFileToCache(next);
-    if (aiMode === "deepseek" && !accessKey.trim()) {
-      // DeepSeek mode key gate: do not hit the server without a key — ask the user first.
+    // Key gate: do not hit the server without a key — ask the user first.
+    if (!accessKey.trim()) {
       setNeedsKey(true);
       setError("🔑 Enter the QA access key, then press Run QA.");
       return;
@@ -518,7 +515,7 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
     const targetFile = fileArg ?? file;
     if (!targetFile) return;
     const key = accessKey.trim();
-    if (aiMode === "deepseek" && !key) {
+    if (!key) {
       setNeedsKey(true);
       setError("🔑 Enter the QA access key, then press Run QA.");
       return;
@@ -534,7 +531,7 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
       body.append("headerRow", headerRowStr);
       body.append("aiMode", aiMode);
       body.append("provider", providerHint);
-      if (aiMode === "deepseek") body.append("key", key);
+      body.append("key", key);
 
       const res = await fetch("/api/qa", { method: "POST", body });
       const json = (await res.json().catch(() => ({}))) as {
@@ -598,7 +595,7 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
   async function runMiniFix() {
     if (!file) return;
     const key = accessKey.trim();
-    if (aiMode === "deepseek" && !key) {
+    if (!key) {
       setNeedsKey(true);
       setError("🔑 Enter the QA access key, then press 🪄 Auto Types.");
       return;
@@ -614,7 +611,7 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
       body.append("headerRow", headerRowStr);
       body.append("aiMode", aiMode);
       body.append("provider", providerHint);
-      if (aiMode === "deepseek") body.append("key", key);
+      body.append("key", key);
 
       const res = await fetch("/api/qa/mini-fix", { method: "POST", body });
       let json: {
@@ -777,7 +774,7 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
           gap: 10,
         }}
       >
-        {/* AI mode selector — DeepSeek (key-gated) vs Free AI (anonymous) */}
+        {/* AI mode selector — DeepSeek vs Free AI (both require access key) */}
         <div
           style={{
             display: "flex",
@@ -913,18 +910,46 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
               </div>
             </div>
             {freeProvider === "moonybot" && (
-              <div
-                style={{
-                  fontSize: 11,
-                  color: "#6366f1",
-                  background: "#eef2ff",
-                  border: "1px solid #c7d2fe",
-                  borderRadius: 6,
-                  padding: "5px 8px",
-                }}
-              >
-                ✅ Anonymous — uses MoonyBot AI (Groq API)
-              </div>
+              <>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: "#6366f1",
+                    background: "#eef2ff",
+                    border: "1px solid #c7d2fe",
+                    borderRadius: 6,
+                    padding: "5px 8px",
+                  }}
+                >
+                  🤖 MoonyBot AI (Groq API)
+                </div>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    fontSize: 12,
+                    color: "#3f4750",
+                  }}
+                >
+                  🔑 Access key
+                  <input
+                    type="password"
+                    value={accessKey}
+                    onChange={(e) => {
+                      setAccessKey(e.target.value);
+                      if (e.target.value.trim()) {
+                        setNeedsKey(false);
+                        setError(null);
+                      }
+                    }}
+                    placeholder="Required — enter your Groq API key"
+                    autoComplete="off"
+                    spellCheck={false}
+                    style={{ ...inputStyle, flex: 1, minWidth: 0 }}
+                  />
+                </label>
+              </>
             )}
             {freeProvider === "deepseek" && (
               <label
@@ -1104,7 +1129,7 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
                 Drop your Excel file here, or click to browse
               </div>
               <div style={{ fontSize: 11, color: "#8a8d91" }}>
-                .xlsx / .xlsm · up to {MAX_FILE_MB} MB · {aiMode === "deepseek" ? "🔑 DeepSeek (key required)" : "🆓 Free AI (anonymous)"}
+                .xlsx / .xlsm · up to {MAX_FILE_MB} MB · {aiMode === "deepseek" ? "🔑 DeepSeek (key required)" : "🆓 Free AI (key required)"}
               </div>
             </div>
           )}
