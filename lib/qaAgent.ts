@@ -351,8 +351,9 @@ interface ChatChoice {
 /** Providers the QA window can explicitly select in Free AI mode. */
 export type QaProvider = "groq" | "deepseek" | "pollinations" | "auto";
 
-/** Resolve provider config. "groq" -> Groq endpoint; "deepseek" -> DeepSeek;
- * "pollinations" -> keyless only; "auto" -> DeepSeek overrides, else Groq.
+/** Resolve provider config. "groq" -> Groq endpoint (never DeepSeek);
+ * "deepseek" -> DeepSeek endpoint; "pollinations" -> keyless only;
+ * "auto" -> DeepSeek overrides if configured, else Groq.
  * Honours "use ai https://api.groq.com/openai/v1 on /qa". */
 function resolveQaConfig(providerHint: QaProvider): {
   apiKey: string | null;
@@ -362,6 +363,7 @@ function resolveQaConfig(providerHint: QaProvider): {
   if (providerHint === "pollinations") {
     return { apiKey: null, baseUrl: "", model: "" };
   }
+  // Explicit DeepSeek — always use the DeepSeek endpoint + key.
   if (providerHint === "deepseek") {
     return {
       apiKey: process.env.AI_QA_API_KEY ?? process.env.AI_API_KEY ?? null,
@@ -370,7 +372,20 @@ function resolveQaConfig(providerHint: QaProvider): {
       model: process.env.AI_QA_MODEL || process.env.AI_MODEL || "deepseek-chat",
     };
   }
-  // "groq" or "auto": prefer DeepSeek overrides if configured, else Groq.
+  // Explicit Groq (e.g. "🤖 MoonyBot AI (Groq API)") — always use the Groq
+  // endpoint + key. Never fall into the DeepSeek overrides, even when
+  // AI_QA_* is configured; that auto-preferral is reserved for "auto".
+  if (providerHint === "groq") {
+    const apiKey = process.env.AI_API_KEY || null;
+    if (!apiKey) return { apiKey: null, baseUrl: "", model: "" };
+    return {
+      apiKey,
+      baseUrl:
+        (process.env.AI_BASE_URL || "https://api.groq.com/openai/v1").replace(/\/$/, ""),
+      model: process.env.AI_MODEL || "openai/gpt-oss-120b",
+    };
+  }
+  // "auto": prefer DeepSeek overrides if configured, else Groq.
   const apiKey = process.env.AI_QA_API_KEY || process.env.AI_API_KEY;
   if (apiKey) {
     return {
@@ -476,37 +491,42 @@ async function askAiJson(
     }
   }
 
-  // Free, keyless fallback (Pollinations, OpenAI-compatible POST).
-  try {
-    const res = await fetch("https://text.pollinations.ai/openai", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "openai",
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: user },
-        ],
-        private: true,
-      }),
-      signal: AbortSignal.timeout(25000),
-    });
-    if (!res.ok) {
-      console.error(
-        "[qaAgent] Pollinations",
-        res.status,
-        (await res.text()).slice(0, 200)
-      );
-    } else {
-      const data = (await res.json()) as ChatChoice;
-      const parsed = extractJsonObject(
-        data.choices?.[0]?.message?.content ?? ""
-      );
-      if (parsed) return parsed;
+  // Free, keyless fallback (Pollinations, OpenAI-compatible POST). Only used
+  // for the default "auto" chain (or when "pollinations" is explicitly picked).
+  // When the user explicitly selects MoonyBot (groq) or DeepSeek, never fall
+  // through to another AI — fail cleanly so they see an error instead.
+  if (providerHint === "auto" || providerHint === "pollinations") {
+    try {
+      const res = await fetch("https://text.pollinations.ai/openai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "openai",
+          messages: [
+            { role: "system", content: system },
+            { role: "user", content: user },
+          ],
+          private: true,
+        }),
+        signal: AbortSignal.timeout(25000),
+      });
+      if (!res.ok) {
+        console.error(
+          "[qaAgent] Pollinations",
+          res.status,
+          (await res.text()).slice(0, 200)
+        );
+      } else {
+        const data = (await res.json()) as ChatChoice;
+        const parsed = extractJsonObject(
+          data.choices?.[0]?.message?.content ?? ""
+        );
+        if (parsed) return parsed;
+      }
+    } catch (err) {
+      console.error("[qaAgent] Pollinations fetch threw:", err);
+      // fall through
     }
-  } catch (err) {
-    console.error("[qaAgent] Pollinations fetch threw:", err);
-    // fall through
   }
 
   return null;

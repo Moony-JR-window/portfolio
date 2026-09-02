@@ -336,8 +336,10 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
   type FreeProvider = "moonybot" | "deepseek" | "other";
   const [freeProvider, setFreeProvider] = useState<FreeProvider>("moonybot");
   const [showComingSoon, setShowComingSoon] = useState(false);
-  // Map the free-provider picker to the backend QaProvider hint that selects
-  // the actual endpoint (Groq default / DeepSeek / other).
+  // Map the window's selector to the backend QaProvider hint that selects the
+  // actual endpoint. Both "DeepSeek" pickers (top-level AI model and the Free
+  // AI provider) always target DeepSeek and never fall back to Groq; MoonyBot
+  // always targets Groq; "Other" is the keyless Pollinations fallback.
   const providerHint: string =
     aiMode === "free"
       ? freeProvider === "moonybot"
@@ -345,7 +347,7 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
         : freeProvider === "deepseek"
           ? "deepseek"
           : "pollinations"
-      : "auto";
+      : "deepseek";
 
   // ---- Elapsed time counter for QA / Auto Types ----
   const [elapsed, setElapsed] = useState(0);
