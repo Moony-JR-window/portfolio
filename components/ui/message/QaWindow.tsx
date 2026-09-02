@@ -20,6 +20,8 @@ import { useEffect, useRef, useState } from "react";
  *     Reciever_Account_Type, Account_Currency and Reciever_Currency.
  *   • Preview Original vs Fixed side-by-side (tabs) and download the fixed
  *     workbook.
+ *   • **File caching** — dropped files are cached in IndexedDB so reopening
+ *     the browser shows the last file and lets you click to continue.
  */
 
 /** Height of the sticky site header (site-header.tsx uses h-16 = 64px). */
@@ -29,9 +31,146 @@ const MIN_H = 440;
 const EDGE_MARGIN = 8;
 const MAX_FILE_MB = 20;
 
+// ---- IndexedDB file cache ----
+const DB_NAME = "qa-window-cache";
+const DB_VERSION = 1;
+const STORE_NAME = "files";
+const CACHE_KEY = "last-excel-file";
+
+interface CachedFile {
+  name: string;
+  data: ArrayBuffer;
+  size: number;
+  type: string;
+  cachedAt: number;
+}
+
+function openDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    if (typeof indexedDB === "undefined") {
+      reject(new Error("IndexedDB is not supported in this browser"));
+      return;
+    }
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME, { keyPath: "key" });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function saveFileToCache(file: File): Promise<void> {
+  try {
+    console.log("Starting to cache file:", file.name, "size:", file.size);
+    // Read file data BEFORE creating the transaction to avoid TransactionInactiveError
+    console.log("Reading file data...");
+    const data = await file.arrayBuffer();
+    console.log("File data read, size:", data.byteLength);
+    
+    console.log("Opening database...");
+    const db = await openDb();
+    console.log("Database opened successfully");
+    
+    const tx = db.transaction(STORE_NAME, "readwrite");
+    const store = tx.objectStore(STORE_NAME);
+    
+    const cached: CachedFile & { key: string } = {
+      key: CACHE_KEY,
+      name: file.name,
+      data,
+      size: file.size,
+      type: file.type,
+      cachedAt: Date.now(),
+    };
+    
+    // Wait for the put request to complete
+    await new Promise<void>((resolve, reject) => {
+      const request = store.put(cached);
+      request.onsuccess = () => {
+        console.log("put request succeeded");
+        resolve();
+      };
+      request.onerror = (e) => {
+        console.error("put request failed:", e);
+        reject(request.error);
+      };
+    });
+    
+    db.close();
+    console.log("File cached successfully:", file.name);
+  } catch (e) {
+    console.error("Failed to cache file:", e);
+  }
+}
+
+async function loadFileFromCache(): Promise<File | null> {
+  try {
+    const db = await openDb();
+    const tx = db.transaction(STORE_NAME, "readonly");
+    const store = tx.objectStore(STORE_NAME);
+    const request = store.get(CACHE_KEY);
+    const result = await new Promise<(CachedFile & { key: string }) | undefined>((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    db.close();
+    if (!result) {
+      console.log("No cached file found");
+      return null;
+    }
+    console.log("Loaded cached file:", result.name);
+    return new File([result.data], result.name, { type: result.type });
+  } catch (e) {
+    console.error("Failed to load cached file:", e);
+    return null;
+  }
+}
+
+async function clearFileCache(): Promise<void> {
+  try {
+    const db = await openDb();
+    const tx = db.transaction(STORE_NAME, "readwrite");
+    const store = tx.objectStore(STORE_NAME);
+    store.delete(CACHE_KEY);
+    await new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  } catch (e) {
+    console.warn("Failed to clear file cache:", e);
+  }
+}
+
 interface PreviewSet {
   headers: string[];
   rows: string[][];
+}
+
+interface RequestLog {
+  row: number;
+  service: string;
+  text: string;
+  url: string;
+  payload: {
+    model: string;
+    messages: { role: string; content: string }[];
+    temperature: number;
+    max_tokens: number;
+  };
+  response: Record<string, unknown> | null;
+  result: {
+    sender: string;
+    receiver: string;
+    senderCurrency: string;
+    receiverCurrency: string;
+  } | null;
+  error: string | null;
+  timestamp: string;
 }
 
 interface QaData {
@@ -47,6 +186,15 @@ interface QaData {
   original: PreviewSet;
   fixed: PreviewSet;
   fixedBase64: string;
+  ai?: {
+    available: boolean;
+    checkedRows: number;
+    suggested: number;
+    applied: number;
+    filled: number;
+    summary: string;
+    requestLogs: RequestLog[];
+  };
 }
 
 function formatBytes(bytes: number): string {
@@ -170,8 +318,9 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<QaData | null>(null);
-  const [activeTab, setActiveTab] = useState<"original" | "fixed">("fixed");
+  const [activeTab, setActiveTab] = useState<"original" | "fixed" | "logs">("fixed");
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+  const [cachedFileName, setCachedFileName] = useState<string | null>(null);
 
   // ---- Access-key gate (validated server-side by lib/qaKey.ts) ----
   const [accessKey, setAccessKey] = useState("");
@@ -237,6 +386,25 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
       if (downloadUrl) URL.revokeObjectURL(downloadUrl);
     };
   }, [downloadUrl]);
+
+  // Load cached file on mount (persists across browser sessions)
+  useEffect(() => {
+    console.log("QaWindow mounted, checking for cached file...");
+    void loadFileFromCache()
+      .then((cached) => {
+        if (cached) {
+          console.log("Found cached file, loading...", cached.name);
+          setCachedFileName(cached.name);
+          setFile(cached);
+        } else {
+          console.log("No cached file found");
+        }
+      })
+      .catch((err) => {
+        console.error("Error loading cached file:", err);
+      });
+  }, []);
+
   // ---- Dragging & resizing (mouse + touch), same approach as AIChatWindow ----
   useEffect(() => {
     const move = (clientX: number, clientY: number) => {
@@ -332,6 +500,9 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
     setSelectedSheet("");
     setFile(next);
     setAiTouched(false);
+    // Cache the file for persistence across browser sessions
+    setCachedFileName(next.name);
+    void saveFileToCache(next);
     if (aiMode === "deepseek" && !accessKey.trim()) {
       // DeepSeek mode key gate: do not hit the server without a key — ask the user first.
       setNeedsKey(true);
@@ -499,6 +670,7 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
         original: json.original,
         fixed: json.fixed,
         fixedBase64: json.fixedBase64,
+        ai: json.ai,
       });
       setAiTouched(true);
       setError(null);
@@ -839,6 +1011,60 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
           hidden
           onChange={(e) => acceptFile(e.target.files?.[0] ?? null)}
         />
+
+        {/* Cached file banner — shown when no file is loaded but a cached file exists */}
+        {!file && cachedFileName && (
+          <div
+            onClick={async () => {
+              const cached = await loadFileFromCache();
+              if (cached) {
+                acceptFile(cached);
+              } else {
+                setCachedFileName(null);
+              }
+            }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "10px 12px",
+              background: "#fffbeb",
+              border: "1px solid #fbbf24",
+              borderRadius: 8,
+              cursor: "pointer",
+              fontSize: 12,
+              color: "#92400e",
+            }}
+          >
+            <span style={{ fontSize: 16 }}>💾</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {cachedFileName}
+              </div>
+              <div style={{ fontSize: 11, color: "#b45309" }}>
+                Click to continue working on this file
+              </div>
+            </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setCachedFileName(null);
+                void clearFileCache();
+              }}
+              title="Remove from cache"
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                fontSize: 14,
+                color: "#92400e",
+                padding: 4,
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         <div
           onClick={() => fileInputRef.current?.click()}

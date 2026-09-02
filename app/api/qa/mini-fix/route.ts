@@ -168,6 +168,7 @@ export async function POST(request: NextRequest) {
         filled: appliedFixes.filter((f) => f.fill).length,
         summary: agent.summary,
         fixes: appliedFixes,
+        requestLogs: agent.requestLogs,
       },
     });
   } catch (error) {

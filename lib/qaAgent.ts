@@ -531,11 +531,44 @@ export interface AiFix {
   fill?: boolean;
 }
 
+export interface RequestLog {
+  /** Row number being processed */
+  row: number;
+  /** Service name for this row */
+  service: string;
+  /** Test case description text sent to AI */
+  text: string;
+  /** AI provider URL */
+  url: string;
+  /** Request payload sent to AI */
+  payload: {
+    model: string;
+    messages: { role: string; content: string }[];
+    temperature: number;
+    max_tokens: number;
+  };
+  /** AI response from AI */
+  response: Record<string, unknown> | null;
+  /** Parsed result (sender/receiver types and currencies) */
+  result: {
+    sender: string;
+    receiver: string;
+    senderCurrency: string;
+    receiverCurrency: string;
+  } | null;
+  /** Error message if request failed */
+  error: string | null;
+  /** Timestamp of the request */
+  timestamp: string;
+}
+
 export interface AiAgentResult {
   available: boolean;
   summary: string;
   fixes: AiFix[];
   checkedRows: number;
+  /** Request logs for debugging/display */
+  requestLogs: RequestLog[];
 }
 
 /** Normalized header keys the agent is allowed to correct. */
@@ -764,6 +797,7 @@ export async function aiFixRows(
     summary: "",
     fixes: [],
     checkedRows: 0,
+    requestLogs: [],
   };
   if (!rows.length) return base;
 
@@ -903,7 +937,7 @@ export async function aiFixRows(
     console.log(`[qaAgent] rejected ${rejected} unsafe/hallucinated fix(es)`);
   }
 
-  return { available: true, summary, fixes: mergeFills(fixes), checkedRows: checked };
+  return { available: true, summary, fixes: mergeFills(fixes), checkedRows: checked, requestLogs: [] };
 }
 
 // -------------------------------------------------------------------------
@@ -949,31 +983,78 @@ async function askAccountTypeVerdict(
     allowedSender: string[];
     allowedReceiver: string[];
   },
-  providerHint: QaProvider = "auto"
-): Promise<AccountTypeVerdict | null> {
+  providerHint: QaProvider = "auto",
+  rowNum: number = 0
+): Promise<{ verdict: AccountTypeVerdict | null; log: RequestLog }> {
   // Build simple command: "Wing to Wing From FC KHR-FC USD what is Sender_Account_Type, Account_Currency, Reciever_Account_Type, Reciever_Currency"
   const command = `${input.service || "?"} ${input.text || ""} what is Sender_Account_Type, Account_Currency, Reciever_Account_Type, Reciever_Currency`;
-  const raw = await askAiJson(ACCOUNT_TYPE_SYSTEM_PROMPT, command, providerHint);
-  if (!raw) return null;
 
-  // Parse AI response - expects: {"Sender_Account_Type":"FC","Account_Currency":"KHR","Reciever_Account_Type":"FC","Reciever_Currency":"USD"}
-  const sender = String(
-    raw.Sender_Account_Type ?? raw.sender_account_type ?? raw.senderAccountType ?? ""
-  ).trim();
-  let receiver = String(
-    raw.Reciever_Account_Type ?? raw.receiver_account_type ?? raw.receiverAccountType ?? raw.reciever_account_type ?? ""
-  ).trim();
-  const senderCurrency = String(raw.Account_Currency ?? raw.sender_currency ?? raw.senderCurrency ?? "").trim().toUpperCase();
-  const receiverCurrency = String(raw.Reciever_Currency ?? raw.receiver_currency ?? raw.receiverCurrency ?? "").trim().toUpperCase();
+  // Resolve provider config for logging
+  const cfg = resolveQaConfig(providerHint);
+  const isPollinations = providerHint === "pollinations" || !cfg.apiKey;
+  const url = isPollinations
+    ? "https://text.pollinations.ai/openai"
+    : `${cfg.baseUrl}/chat/completions`;
 
-  // Clean up receiver: remove "From ... - " prefix if AI included it
-  const fromPrefix = /^from\s+.*?\s*-\s*/i;
-  if (fromPrefix.test(receiver)) {
-    receiver = receiver.replace(fromPrefix, "").trim();
+  const log: RequestLog = {
+    row: rowNum,
+    service: input.service,
+    text: input.text,
+    url,
+    payload: {
+      model: cfg.model || "openai",
+      messages: [
+        { role: "system", content: ACCOUNT_TYPE_SYSTEM_PROMPT },
+        { role: "user", content: command },
+      ],
+      temperature: 0,
+      max_tokens: 2048,
+    },
+    response: null,
+    result: null,
+    error: null,
+    timestamp: new Date().toISOString(),
+  };
+
+  try {
+    const raw = await askAiJson(ACCOUNT_TYPE_SYSTEM_PROMPT, command, providerHint);
+    if (!raw) {
+      log.error = "AI returned null or all providers failed";
+      return { verdict: null, log };
+    }
+
+    log.response = raw as Record<string, unknown>;
+
+    // Parse AI response - expects: {"Sender_Account_Type":"FC","Account_Currency":"KHR","Reciever_Account_Type":"FC","Reciever_Currency":"USD"}
+    const sender = String(
+      raw.Sender_Account_Type ?? raw.sender_account_type ?? raw.senderAccountType ?? ""
+    ).trim();
+    let receiver = String(
+      raw.Reciever_Account_Type ?? raw.receiver_account_type ?? raw.receiverAccountType ?? raw.reciever_account_type ?? ""
+    ).trim();
+    const senderCurrency = String(raw.Account_Currency ?? raw.sender_currency ?? raw.senderCurrency ?? "").trim().toUpperCase();
+    const receiverCurrency = String(raw.Reciever_Currency ?? raw.receiver_currency ?? raw.receiverCurrency ?? "").trim().toUpperCase();
+
+    // Clean up receiver: remove "From ... - " prefix if AI included it
+    const fromPrefix = /^from\s+.*?\s*-\s*/i;
+    if (fromPrefix.test(receiver)) {
+      receiver = receiver.replace(fromPrefix, "").trim();
+    }
+
+    if (!sender && !receiver) {
+      log.error = "AI returned empty sender and receiver";
+      return { verdict: null, log };
+    }
+
+    log.result = { sender, receiver, senderCurrency, receiverCurrency };
+    return {
+      verdict: { sender, receiver, senderCurrency, receiverCurrency, reason: `AI detected from: ${input.text}` },
+      log,
+    };
+  } catch (err) {
+    log.error = err instanceof Error ? err.message : String(err);
+    return { verdict: null, log };
   }
-
-  if (!sender && !receiver) return null;
-  return { sender, receiver, senderCurrency, receiverCurrency, reason: `AI detected from: ${input.text}` };
 }
 
 /**
@@ -1036,6 +1117,7 @@ export async function miniFixAccountTypes(
     summary: "",
     fixes: [],
     checkedRows: 0,
+    requestLogs: [],
   };
   const colByKey = new Map<string, number>();
   headers.forEach((h, i) => {
@@ -1067,10 +1149,12 @@ export async function miniFixAccountTypes(
   if (!candidates.length) return base;
 
   const fixes: AiFix[] = [];
+  const requestLogs: RequestLog[] = [];
   // Process rows 1 by 1 (as user requested) - simpler and more reliable
   for (const candidate of candidates) {
     try {
-      const verdict = await askAccountTypeVerdict(
+      const rowNum = candidate.idx + 1;
+      const { verdict, log } = await askAccountTypeVerdict(
         {
           service: candidate.service,
           text: candidate.text,
@@ -1085,11 +1169,14 @@ export async function miniFixAccountTypes(
           allowedSender: profile.senderAccountTypes,
           allowedReceiver: profile.receiverAccountTypes,
         },
-        providerHint
+        providerHint,
+        rowNum
       );
 
+      // Collect request log
+      requestLogs.push(log);
+
       if (!verdict) continue;
-      const rowNum = candidate.idx + 1;
 
       // Update Sender_Account_Type
       if (senderCol !== undefined) {
@@ -1164,6 +1251,7 @@ export async function miniFixAccountTypes(
     available: fixes.length > 0,
     checkedRows: candidates.length,
     fixes: fixes.slice(0, 400),
+    requestLogs,
     summary:
       fixes.length > 0
         ? `🪄 AI auto-typed ${fixes.length} cell(s) from ${candidates.length} row(s) — using Test_Case_Description.`
