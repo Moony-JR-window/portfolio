@@ -1173,10 +1173,21 @@ async function askAccountTypeVerdict(
   providerHint: QaProvider = "auto",
   rowNum: number = 0,
   oxCreds?: OxAlphaCreds,
-  rawFetch?: (system: string, user: string, model: string) => Promise<RawFetchReply | null>
+  rawFetch?: (system: string, user: string, model: string) => Promise<RawFetchReply | null>,
+  /** Optional free-text instructions typed by the user (e.g. the merchant's
+   *  real account numbers: "my fc khr is 1234, usd is 4522, psp khr 2823…").
+   *  Appended verbatim to every row's prompt so the AI can ground its
+   *  account-type choice in these facts. */
+  extraCommand?: string
 ): Promise<{ verdict: AccountTypeVerdict | null; log: RequestLog }> {
   // Build simple command: "Wing to Wing From FC KHR-FC USD what is Sender_Account_Type, Account_Currency, Reciever_Account_Type, Reciever_Currency"
-  const command = `${input.service || "?"} ${input.text || ""} what is Sender_Account_Type, Account_Currency, Reciever_Account_Type, Reciever_Currency`;
+  const extra = (extraCommand || "").trim();
+  const command = [
+    extra ? `Additional context from the user (MUST follow these facts):\n${extra}` : "",
+    `${input.service || "?"} ${input.text || ""} what is Sender_Account_Type, Account_Currency, Reciever_Account_Type, Reciever_Currency`,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 
   // Resolve provider config for logging
   const cfg = resolveQaConfig(providerHint);
@@ -1294,6 +1305,67 @@ function pickCurrency(vocab: string[], verdict: string): string | null {
 }
 
 /**
+ * Parse the user's ✍️ account-notes text (e.g. "my fc usd = 103634533,
+ * khr = 103634567, psp khr 2823, other bank usd 93234") into a lookup map of
+ * `${TYPE}|${CURRENCY}` -> account number. The account TYPE carries over to
+ * following entries ("fc usd = X, khr = Y" means Y is FC too), so the sample
+ * input resolves to FC|USD = X and FC|KHR = Y. Unknown labels (e.g.
+ * "other bank") are canonicalized against the reference vocabulary when
+ * possible, otherwise stored under the raw label's loose key.
+ */
+function parseAccountNotes(
+  text: string,
+  vocabTypes: string[]
+): Map<string, string> {
+  const map = new Map<string, string>();
+  if (!text) return map;
+  const curRes = "\\b(KHR|USD|THB|EUR|GBP|JPY|CNY|SGD|MYR|VND|LAK|MMK|BND|PHP|IDR|AUD|CAD|CHF|HKD|INR|KRW|NZD)\\b";
+  // Split the notes into comma/semicolon/newline separated fragments so a type
+  // word mentioned once ("my fc usd = X, khr = Y") applies to both entries.
+  const parts = text.split(/[,;\n]+/);
+  let lastType = "";
+  for (const rawPart of parts) {
+    const part = rawPart.trim();
+    if (!part) continue;
+    const m = part.match(new RegExp(`^((?:my\\s+)?[A-Za-z][A-Za-z /-]{0,30}?\\s+)?${curRes}\\s*(?:=|:)?\\s*([0-9]{6,20})\\b`, "i"));
+    if (!m) continue;
+    const label = (m[1] || "").toLowerCase();
+    const cur = m[2].toUpperCase();
+    const num = m[3];
+    let type = lastType;
+    // Determine the account type from the label text against the vocabulary.
+    for (const v of vocabTypes) {
+      const vk = looseKey(v);
+      if (vk && label.includes(vk)) { type = v; break; }
+    }
+    if (!type && /bank|aba|acleda|other/i.test(label)) type = "Other Bank";
+    if (!type && /psp|wing|phone/i.test(label)) type = "PSP";
+    if (!type && /(^|\s)fc(\s|$)|full\s*account|merchant/i.test(label)) type = "FC";
+    if (type) lastType = type;
+    const keyType = lastType || "ANY";
+    map.set(`${looseKey(keyType)}|${cur}`, num);
+  }
+  return map;
+}
+
+/** Look up an account number for a resolved type + currency, tolerating type
+ *  variants (e.g. "FC USD" vs "FC") and an "ANY" wildcard entry. */
+function lookupAccountNote(
+  map: Map<string, string>,
+  type: string,
+  currency: string
+): string {
+  if (!map.size || !type || !currency) return "";
+  const t = looseKey(type);
+  const cur = currency.toUpperCase();
+  return (
+    map.get(`${t}|${cur}`) ??
+    map.get(`any|${cur}`) ??
+    ""
+  );
+}
+
+/**
  * "🪄 Auto Types" mini-fix: for EVERY data row, ask the AI (configured
  * provider first, free Pollinations fallback) to read the row's
  * Test_Case_Description (the Scenarios column is NOT used) and return the
@@ -1309,7 +1381,10 @@ export async function miniFixAccountTypes(
   providerHint: QaProvider = "auto",
   maxRows = 250,
   oxCreds?: OxAlphaCreds,
-  rawFetch?: (system: string, user: string, model: string) => Promise<RawFetchReply | null>
+  rawFetch?: (system: string, user: string, model: string) => Promise<RawFetchReply | null>,
+  /** Optional user-typed instructions (account numbers, special rules) that
+   *  are passed verbatim to the AI with every row's Test_Case_Description. */
+  extraCommand?: string
 ): Promise<AiAgentResult> {
   const base: AiAgentResult = {
     available: false,
@@ -1334,6 +1409,22 @@ export async function miniFixAccountTypes(
   const senderCurrCol = colByKey.get("accountcurrency");
   const receiverCurrCol =
     colByKey.get("recievercurrency") ?? colByKey.get("receivercurrency");
+  // Account-number columns (filled from the user's ✍️ notes when empty)
+  const senderAccCol = colByKey.get("senderaccount");
+  const receiverAccCol =
+    colByKey.get("receiveraccount") ?? colByKey.get("recieveraccount");
+  // Parse the user's notes ("my fc usd = 103634533, khr = 103634567, …") into
+  // a TYPE|CURRENCY -> number map used to fill empty account cells.
+  const accountNotes = parseAccountNotes(extraCommand || "", [
+    ...profile.senderAccountTypes,
+    ...profile.receiverAccountTypes,
+  ]);
+  if (accountNotes.size) {
+    console.log(
+      `[qaAgent] account notes parsed:`,
+      [...accountNotes.entries()]
+    );
+  }
 
   const limit = Math.min(rows.length, maxRows);
   const candidates: { idx: number; service: string; text: string }[] = [];
@@ -1377,7 +1468,8 @@ export async function miniFixAccountTypes(
         providerHint,
         rowNum,
         oxCreds,
-        rawFetch
+        rawFetch,
+        extraCommand
       );
 
       // Collect request log
@@ -1455,6 +1547,47 @@ export async function miniFixAccountTypes(
             reason: "AI auto-typed from Test_Case_Description",
             fill: current === "",
           });
+        }
+      }
+
+      // ✍️ Fill EMPTY account-number cells from the user's notes
+      // (e.g. "my fc usd = 103634533, khr = 103634567" → Sender_Account =
+      // 103634567 when the row resolved to FC + KHR). Only fills when the
+      // cell is empty and the resolved type+currency matches a note.
+      const senderType = pickAccountType(profile.senderAccountTypes, verdict.sender) || verdict.sender;
+      const senderCur = pickCurrency(profile.currencies, verdict.senderCurrency) || verdict.senderCurrency;
+      if (senderAccCol !== undefined) {
+        const current = String(rows[candidate.idx]?.[senderAccCol] ?? "").trim();
+        if (!current) {
+          const num = lookupAccountNote(accountNotes, senderType, senderCur);
+          if (num) {
+            fixes.push({
+              row: rowNum,
+              column: headers[senderAccCol],
+              from: "",
+              to: num,
+              reason: `✍️ from user account notes (${senderType} ${senderCur})`,
+              fill: true,
+            });
+          }
+        }
+      }
+      if (receiverAccCol !== undefined) {
+        const current = String(rows[candidate.idx]?.[receiverAccCol] ?? "").trim();
+        if (!current) {
+          const recType = pickAccountType(profile.receiverAccountTypes, verdict.receiver) || verdict.receiver;
+          const recCur = pickCurrency(profile.currencies, verdict.receiverCurrency) || verdict.receiverCurrency;
+          const num = lookupAccountNote(accountNotes, recType, recCur);
+          if (num) {
+            fixes.push({
+              row: rowNum,
+              column: headers[receiverAccCol],
+              from: "",
+              to: num,
+              reason: `✍️ from user account notes (${recType} ${recCur})`,
+              fill: true,
+            });
+          }
         }
       }
     } catch (err) {

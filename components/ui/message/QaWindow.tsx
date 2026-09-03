@@ -485,6 +485,10 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
   type FreeProvider = "moonybot" | "deepseek" | "oxalpha" | "other";
   const [freeProvider, setFreeProvider] = useState<FreeProvider>("moonybot");
   const [showComingSoon, setShowComingSoon] = useState(false);
+  // ✍️ Custom AI command: free text (e.g. the merchant's real account numbers)
+  // that is passed to the AI with every row's Test_Case_Description so it can
+  // ground its Sender/Receiver account-type choice in these facts.
+  const [extraCommand, setExtraCommand] = useState("");
   // Map the window's selector to the backend QaProvider hint that selects the
   // actual endpoint. Both "DeepSeek" pickers (top-level AI model and the Free
   // AI provider) always target DeepSeek and never fall back to Groq; MoonyBot
@@ -765,6 +769,8 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
       body.append("aiMode", aiMode);
       body.append("provider", providerHint);
       body.append("key", key);
+      // ✍️ Custom command (merchant account numbers etc.) — sent with every row.
+      if (extraCommand.trim()) body.append("extraCommand", extraCommand.trim());
 
       const res = await fetch("/api/qa/mini-fix", { method: "POST", body });
       let json: {
@@ -1386,6 +1392,23 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
             >
               {aiMode === "deepseek" ? "🔑 DeepSeek" : "🆓 Free AI"}
             </span>
+
+            {/* ✍️ Custom AI command — merchant account facts sent with every row */}
+            <textarea
+              value={extraCommand}
+              onChange={(e) => setExtraCommand(e.target.value)}
+              placeholder={
+                "✍️ Optional: account facts for the AI, e.g.\nmy fc khr is 1234, usd is 4522 and psp khr is 2823, usd 34348, other bank khr 384273, usd 93234"
+              }
+              rows={2}
+              maxLength={4000}
+              style={{
+                ...inputStyle,
+                resize: "vertical",
+                fontSize: 12,
+                lineHeight: 1.4,
+              }}
+            />
 
             <button
               onClick={() => void runQa(file, selectedSheet)}

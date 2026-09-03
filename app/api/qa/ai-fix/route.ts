@@ -251,7 +251,7 @@ async function finish(
 
   // ---- 4) Rebuild the preview + export the AI-fixed workbook ----
   const fixedAoa = sheetToAoa(ws);
-  const fixed = buildPreviewMatrix(fixedAoa, hr, 60);
+  const fixed = buildPreviewMatrix(fixedAoa, hr, 1000);
   const fixedBase64 = await workbookToBase64(result.wb);
   const fixedRowsLen = hr - 1 < fixedAoa.length ? fixedAoa.length - hr : 0;
 

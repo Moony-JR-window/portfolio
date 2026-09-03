@@ -489,7 +489,7 @@ export type PreviewRows = string[][];
 export function buildPreviewMatrix(
   aoa: unknown[][],
   headerRow: number,
-  maxRows = 60,
+  maxRows = 1000,
   maxCols = 40
 ): { headers: string[]; rows: PreviewRows } {
   if (!aoa.length) return { headers: [], rows: [] };
@@ -546,7 +546,7 @@ export async function processWorkbook(
   buffer: ArrayBuffer,
   sheetName: string,
   headerRow: number,
-  maxPreviewRows = 60
+  maxPreviewRows = 1000
 ): Promise<QaResult> {
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(buffer);

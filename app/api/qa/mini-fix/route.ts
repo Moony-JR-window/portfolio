@@ -86,6 +86,11 @@ export async function POST(request: NextRequest) {
         String(formData.get("oxturnstilefield") || "") || undefined,
     };
 
+    // Optional free-text command typed by the user (e.g. merchant account
+    // numbers: "my fc khr is 1234, usd is 4522, psp khr 2823..."). Passed to
+    // the AI together with each row's Test_Case_Description.
+    const extraCommand = String(formData.get("extraCommand") || "").slice(0, 4000).trim();
+
     const sheetName = String(formData.get("sheet") || "");
     let headerRow = Number(formData.get("headerRow"));
     if (!Number.isFinite(headerRow) || headerRow < 1) headerRow = 1;
@@ -196,7 +201,8 @@ export async function POST(request: NextRequest) {
         provider,
         undefined,
         oxAlphaCreds,
-        rawFetch
+        rawFetch,
+        extraCommand
       );
     } finally {
       if (oxSession) await oxSession.close().catch(() => {});
@@ -228,7 +234,7 @@ export async function POST(request: NextRequest) {
     }
 
     const fixedAoa = sheetToAoa(ws);
-    const fixed = buildPreviewMatrix(fixedAoa, hr, 60);
+    const fixed = buildPreviewMatrix(fixedAoa, hr, 1000);
     const fixedBase64 = await workbookToBase64(result.wb);
     const fixedRowsLen = hr - 1 < fixedAoa.length ? fixedAoa.length - hr : 0;
 
