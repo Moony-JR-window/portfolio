@@ -70,7 +70,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Choose the AI provider for the account-type pass (groq/deepseek/pollinations/oxalpha).
+    // OXALPHA ONLY: the requested provider is authoritative — when the user
+    // picks ⚡ oxalpha we never silently switch to another AI.
     const provider = String(formData.get("provider") || "auto") as QaProvider;
+    console.log(`[mini-fix] provider=${provider} aiMode=${aiMode}`);
 
     // Optional oxalpha.com session credentials (Cookie + XSRF token + model +
     // Turnstile token). Only consumed when provider === "oxalpha"; otherwise ignored.

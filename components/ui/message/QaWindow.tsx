@@ -973,7 +973,10 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
               >
                 <button
                   type="button"
-                  onClick={() => setFreeProvider("moonybot")}
+                  onClick={() => {
+                    setFreeProvider("moonybot");
+                    setAiMode("free");
+                  }}
                   style={{
                     flex: 1,
                     border: "none",
@@ -990,7 +993,10 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setFreeProvider("deepseek")}
+                  onClick={() => {
+                    setFreeProvider("deepseek");
+                    setAiMode("free");
+                  }}
                   style={{
                     flex: 1,
                     border: "none",
@@ -1007,7 +1013,10 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setFreeProvider("oxalpha")}
+                  onClick={() => {
+                    setFreeProvider("oxalpha");
+                    setAiMode("free");
+                  }}
                   style={{
                     flex: 1,
                     border: "none",

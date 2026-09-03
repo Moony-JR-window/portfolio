@@ -973,7 +973,9 @@ export async function aiFixRows(
   rows: string[][],
   profile: ReferenceProfile,
   providerHint: QaProvider = "auto",
-  maxRows = 25
+  maxRows = 25,
+  oxCreds?: OxAlphaCreds,
+  rawFetch?: (system: string, user: string, model: string) => Promise<RawFetchReply | null>
 ): Promise<AiAgentResult> {
   const base: AiAgentResult = {
     available: false,
@@ -1076,7 +1078,9 @@ export async function aiFixRows(
             raw = await askAiJson(
       QA_SYSTEM_PROMPT,
       buildUser(buildPayload(checked)),
-      providerHint
+      providerHint,
+      oxCreds,
+      rawFetch
     );
     if (raw) break;
     const next = Math.max(1, Math.floor(checked / 2));

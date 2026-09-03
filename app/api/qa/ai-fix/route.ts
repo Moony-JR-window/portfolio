@@ -13,7 +13,10 @@ import {
   loadReferenceProfile,
   type AiFix,
   type QaProvider,
+  type OxAlphaCreds,
+  type RawFetchReply,
 } from "@/lib/qaAgent";
+import { openOxalphaSession } from "@/lib/oxalphaBrowser";
 import { isValidQaKey } from "@/lib/qaKey";
 
 export const maxDuration = 60;
@@ -73,8 +76,21 @@ export async function POST(request: NextRequest) {
     }
 
     // Choose the AI provider for the agent pass. The window picks
-    // "groq" / "deepseek" / "pollinations" (or omit for the default auto chain).
+    // "groq" / "deepseek" / "pollinations" / "oxalpha" (or omit for auto).
+    // OXALPHA ONLY: the requested provider is authoritative — when the user
+    // picks ⚡ oxalpha we never silently switch to another AI.
     const provider = String(formData.get("provider") || "auto") as QaProvider;
+    console.log(`[ai-fix] provider=${provider} aiMode=${aiMode}`);
+
+    // Optional oxalpha.com session credentials (only for provider === "oxalpha").
+    const oxAlphaCreds: OxAlphaCreds = {
+      cookie: String(formData.get("oxcookie") || ""),
+      csrf: String(formData.get("oxcsrf") || ""),
+      model: String(formData.get("oxmodel") || "") || undefined,
+      turnstile: String(formData.get("oxturnstile") || "") || undefined,
+      turnstileField:
+        String(formData.get("oxturnstilefield") || "") || undefined,
+    };
 
     const sheetName = String(formData.get("sheet") || "");
     let headerRow = Number(formData.get("headerRow"));
@@ -112,17 +128,36 @@ export async function POST(request: NextRequest) {
       .map((r) => (r || []).map((v) => (v === null || v === undefined ? "" : String(v))));
 
     const profile = await loadReferenceProfile();
-    let agent = {
-      available: false,
-      summary: "",
-      fixes: [] as AiFix[],
-      checkedRows: 0,
-    };
-    if (profile) {
-            agent = await aiFixRows(headers, dataRows, profile, provider);
-    } else {
-      agent.summary =
-        "Reference template not readable on the server — applied rule-based fixes only.";
+    // oxalpha browser mode (same as mini-fix): one real Chrome on
+    // oxalpha.com/chat solves Turnstile and carries the session for every row.
+    const browserMode = provider === "oxalpha" && process.env.OXALPHA_BROWSER !== "0";
+    let oxSession: Awaited<ReturnType<typeof openOxalphaSession>> | null = null;
+    let rawFetch: ((system: string, user: string, model: string) => Promise<RawFetchReply | null>) | undefined;
+    if (browserMode) {
+      try {
+        oxSession = await openOxalphaSession({ model: oxAlphaCreds.model });
+        rawFetch = oxSession.ask;
+      } catch (err) {
+        console.error("[ai-fix] oxalpha browser launch failed:", err);
+        oxSession = null;
+      }
+    }
+
+    let agent;
+    try {
+      if (profile) {
+        agent = await aiFixRows(headers, dataRows, profile, provider, undefined, oxAlphaCreds, rawFetch);
+      } else {
+        agent = {
+          available: false,
+          summary:
+            "Reference template not readable on the server — applied rule-based fixes only.",
+          fixes: [] as AiFix[],
+          checkedRows: 0,
+        };
+      }
+    } finally {
+      if (oxSession) await oxSession.close().catch(() => {});
     }
 
     return await finish(ws, hr, file.name, result, agent, aoa);
