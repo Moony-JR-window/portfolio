@@ -1349,6 +1349,12 @@ export async function miniFixAccountTypes(
 
   const fixes: AiFix[] = [];
   const requestLogs: RequestLog[] = [];
+  // Fail fast: when the selected provider keeps failing (e.g. oxalpha quota /
+  // Turnstile), abort the run after N consecutive failures instead of slowly
+  // grinding through every row. Reset on any success.
+  let consecutiveFailures = 0;
+  const MAX_CONSECUTIVE_FAILURES = 3;
+  let abortedAfter = -1;
   // Process rows 1 by 1 (as user requested) - simpler and more reliable
   for (const candidate of candidates) {
     try {
@@ -1377,7 +1383,16 @@ export async function miniFixAccountTypes(
       // Collect request log
       requestLogs.push(log);
 
-      if (!verdict) continue;
+      if (!verdict) {
+        // The AI gave no usable answer for this row.
+        consecutiveFailures += 1;
+        if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+          abortedAfter = candidate.idx + 1;
+          break;
+        }
+        continue;
+      }
+      consecutiveFailures = 0;
 
       // Update Sender_Account_Type
       if (senderCol !== undefined) {
@@ -1450,11 +1465,13 @@ export async function miniFixAccountTypes(
 
   return {
     available: fixes.length > 0,
-    checkedRows: candidates.length,
+    checkedRows: abortedAfter >= 0 ? abortedAfter - MAX_CONSECUTIVE_FAILURES : candidates.length,
     fixes: fixes.slice(0, 400),
     requestLogs,
     summary:
-      fixes.length > 0
+      abortedAfter >= 0
+        ? `🛑 Aborted after ${MAX_CONSECUTIVE_FAILURES} consecutive failed rows (row ${abortedAfter}). The AI provider kept failing — check the 📋 Logs tab for the exact URL/status. No fallback was used.`
+        : fixes.length > 0
         ? `🪄 AI auto-typed ${fixes.length} cell(s) from ${candidates.length} row(s) — using Test_Case_Description.`
         : "🪄 No account-type or currency corrections were needed.",
   };

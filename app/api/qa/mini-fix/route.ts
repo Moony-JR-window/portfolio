@@ -147,10 +147,40 @@ export async function POST(request: NextRequest) {
     if (browserMode) {
       try {
         oxSession = await openOxalphaSession({ model: oxAlphaCreds.model });
+        // Probe once before committing to the batch: if oxalpha is
+        // quota-blocked / challenge-walled, fail the run NOW (fast, honest)
+        // instead of grinding through every row slowly.
+        const probe = await oxSession.ask(
+          "Reply with exactly this JSON and nothing else: {\"ok\":true}",
+          "ping"
+        );
+        if (!probe || !probe.content || (probe.status && probe.status >= 400)) {
+          await oxSession.close().catch(() => {});
+          const detail = probe
+            ? `HTTP ${probe.status} ${probe.resBody || ""}`.trim()
+            : "no response from the page";
+          console.error("[mini-fix] oxalpha probe failed:", detail);
+          return NextResponse.json(
+            {
+              success: false,
+              error: `⚡ oxalpha is not answering (probe: ${detail}). Run aborted — no fallback is used for oxalpha. Wait for the quota/Turnstile to clear and try again.`,
+            },
+            { status: 502 }
+          );
+        }
         rawFetch = oxSession.ask;
       } catch (err) {
         console.error("[mini-fix] oxalpha browser launch failed:", err);
+        if (oxSession) await oxSession.close().catch(() => {});
         oxSession = null;
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Could not launch the oxalpha browser session (Chrome missing or blocked). Run aborted — no fallback is used for oxalpha.",
+          },
+          { status: 502 }
+        );
       }
     }
 

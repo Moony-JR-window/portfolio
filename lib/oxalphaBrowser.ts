@@ -159,7 +159,7 @@ export async function openOxalphaSession(
     const m =
       model || opts.model || process.env.OXALPHA_MODEL || "z-ai/glm-5.3-flash";
     try {
-      const content = (await page.evaluate(
+      const evaluatePromise = page.evaluate(
         async ({ baseUrl, m, system, user }) => {
           // ---- Get a Turnstile token valid for THIS (oxalpha.com) origin ----
           async function getTurnstileToken(): Promise<string> {
@@ -232,7 +232,7 @@ export async function openOxalphaSession(
                     resolve();
                   },
                 });
-                setTimeout(() => resolve(), 15000); // safety timeout
+                setTimeout(() => resolve(), 8000); // safety timeout
               } catch {
                 resolve();
               }
@@ -313,7 +313,12 @@ export async function openOxalphaSession(
           system: string;
           user: string;
         }
-      ));
+      );
+      // Fail fast: never let one row hang the whole run. 45s cap per call.
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("oxalpha call timed out (45s)")), 45000)
+      );
+      const content = await Promise.race([evaluatePromise, timeoutPromise]);
 
       // Log the full call: URL, request body, response status, response snippet.
       console.log(
