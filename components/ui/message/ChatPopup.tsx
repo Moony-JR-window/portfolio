@@ -5,6 +5,7 @@ import { useState } from "react";
 import ChatWindow from "./ChatWindow";
 import AIChatWindow from "./AIChatWindow";
 import QaWindow from "./QaWindow";
+import RequestLogWindow from "./RequestLogWindow";
 import Notification from"./Notification"
 
 export default function ChatPopup() {
@@ -25,6 +26,12 @@ export default function ChatPopup() {
 
   // ---- Dedicated Excel QA window ("/qa" command) ----
   const [qaOpen, setQaOpen] = useState(false);
+
+  // ---- Live request-log viewer ("/log" command) ----
+  const [logsOpen, setLogsOpen] = useState(false);
+  function openLogs() {
+    setLogsOpen(true);
+  }
   const {
     you,
     visitors,
@@ -70,6 +77,7 @@ export default function ChatPopup() {
           onMinimize={() => setOpen(false)}
           onOpenAI={openAI}
           onOpenQA={() => setQaOpen(true)}
+          onOpenLogs={openLogs}
         />
       ) : (
         <button
@@ -128,6 +136,11 @@ export default function ChatPopup() {
           key={`qa-${aiSeq}`}
           onClose={() => setQaOpen(false)}
         />
+      )}
+
+      {/* Live request-log viewer — opened by the "/log" command */}
+      {logsOpen && (
+        <RequestLogWindow onClose={() => setLogsOpen(false)} />
       )}
     </div>
   );

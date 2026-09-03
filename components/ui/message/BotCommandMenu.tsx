@@ -7,6 +7,8 @@ interface Props {
     onCloseBot: () => void;
     onAI?: () => void;
     onQA?: () => void;
+    /** Open the live request-log viewer ("/log"). */
+    onLogs?: () => void;
 }
 
 const itemStyle: React.CSSProperties = {
@@ -25,6 +27,7 @@ export default function BotCommandMenu({
     onCloseBot,
     onAI,
     onQA,
+    onLogs,
 }: Props) {
     if (!showCommands && !showBotMenu) return null;
 
@@ -111,6 +114,29 @@ export default function BotCommandMenu({
                         }}
                     >
                         Unmerge + rename Service_Name — Auto Types — type /qa
+                    </div>
+                </button>
+
+                <button
+                    className=" bg-gray-700 "
+                    onClick={onLogs}
+                    style={{
+                        width: "100%",
+                        border: "none",
+                        padding: 12,
+                        cursor: "pointer",
+                        textAlign: "left",
+                    }}
+                >
+                    <div style={{ fontWeight: 600 }}>📜 Request Logs</div>
+                    <div
+                        style={{
+                            fontSize: 12,
+                            color: "#777",
+                            marginTop: 4,
+                        }}
+                    >
+                        Live middleware feed — type /log
                     </div>
                 </button>
                 </>

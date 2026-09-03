@@ -73,7 +73,8 @@ export type AIChatModel =
   | "openai/gpt-oss-120b"
   | "meta-llama/llama-4-scout-17b-16e-instruct"
   | "free:openai"
-  | "free:mistral";
+  | "free:mistral"
+  | "oxalpha";
 
 interface ModelOption {
   value: AIChatModel;
@@ -94,6 +95,12 @@ export const MODEL_OPTIONS: ModelOption[] = [
   },
   { value: "free:openai", label: "OpenAI (free)", short: "OpenAI", hint: "Keyless Pollinations — no API key needed." },
   { value: "free:mistral", label: "Mistral (free)", short: "Mistral", hint: "Keyless Pollinations — no API key needed." },
+  {
+    value: "oxalpha",
+    label: "Oxalpha (keyless)",
+    short: "Oxalpha",
+    hint: "Keyless oxalpha.com chat — needs a session cookie or local Chrome.",
+  },
 ];
 
 const MODEL_STORAGE_KEY = "moonydev_ai_model";

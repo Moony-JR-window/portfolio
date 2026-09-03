@@ -23,6 +23,8 @@ interface Props {
   onOpenAI: (question?: string) => void;
   /** Open the dedicated Excel QA window ("/qa" command). */
   onOpenQA: () => void;
+  /** Open the live request-log viewer ("/log" command). */
+  onOpenLogs: () => void;
   onClose: () => void;
   onMinimize: () => void;
 }
@@ -40,6 +42,7 @@ export default function ChatWindow({
   onSteam,
   onOpenAI,
   onOpenQA,
+  onOpenLogs,
   onClose,
   onMinimize,
 }: Props) {
@@ -144,6 +147,15 @@ export default function ChatWindow({
         setShowCommands(false);
         // Open the dedicated Excel QA window (unmerge + Service_Name rename).
         onOpenQA();
+        return;
+      }
+
+      if (lower === "/log" || lower.startsWith("/log ")) {
+        setDraft("");
+        onTyping(false);
+        setShowCommands(false);
+        // Open the live request-log viewer (middleware feed).
+        onOpenLogs();
         return;
       }
 
@@ -573,6 +585,10 @@ export default function ChatWindow({
                     /* best effort */
                   }
                 });
+              }}
+              onLogs={() => {
+                setShowCommands(false);
+                onOpenLogs();
               }}
             />
 

@@ -47,7 +47,7 @@ export async function POST() {
   } catch (error: any) {
     console.error(
       "Visit API POST error:",
-      error?.response?.data || error.message
+      // error?.response?.data || error.message
     );
 
     return NextResponse.json(
@@ -95,7 +95,7 @@ export async function GET() {
   } catch (error: any) {
     console.error(
       "Visit API GET error:",
-      error?.response?.data || error.message
+      // error?.response?.data || error.message
     );
 
     // Return cached data (even if stale) instead of 500 error
