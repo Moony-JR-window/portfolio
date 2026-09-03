@@ -62,15 +62,24 @@ export interface OxalphaBrowserOptions {
   page?: Page | null;
 }
 
+/** Everything needed to log one /api/chat call: URL, request body, status, response. */
+export interface OxAlphaReply {
+  content: string | null;
+  url: string;
+  reqBody?: unknown;
+  status: number;
+  resBody: string;
+}
+
 export interface OxalphaBrowserSession {
   browser: Browser;
   page: Page;
-  /** Run one chat completion. Returns raw assistant text (SSE-joined). */
+  /** Run one chat completion. Returns url + req body + status + response text. */
   ask: (
     system: string,
     user: string,
     model?: string
-  ) => Promise<string | null>;
+  ) => Promise<OxAlphaReply | null>;
   close: () => Promise<void>;
 }
 
@@ -146,7 +155,7 @@ export async function openOxalphaSession(
     system: string,
     user: string,
     model?: string
-  ): Promise<string | null> => {
+  ): Promise<OxAlphaReply | null> => {
     const m =
       model || opts.model || process.env.OXALPHA_MODEL || "z-ai/glm-5.3-flash";
     try {
@@ -240,7 +249,12 @@ export async function openOxalphaSession(
             .find(([k]) => k === "XSRF-TOKEN");
           const csrf = xsrf ? decodeURIComponent(xsrf[1] || "") : "";
 
-          const res = await fetch(`${baseUrl}/api/chat`, {
+          const url = `${baseUrl}/api/chat`;
+          const reqBody = {
+            model: m,
+            messages: [{ role: "user", content: `${system}\n\n${user}` }],
+          };
+          const res = await fetch(url, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -250,17 +264,21 @@ export async function openOxalphaSession(
                 ? { "cf-turnstile-response": turnstileToken }
                 : {}),
             },
-            body: JSON.stringify({
-              model: m,
-              messages: [{ role: "user", content: `${system}\n\n${user}` }],
-            }),
+            body: JSON.stringify(reqBody),
           });
+          const resStatus = res.status;
+          const resText = await res.text();
           if (!res.ok) {
-            return `<error:${res.status}>${(await res.text()).slice(0, 200)}`;
+            return {
+              url,
+              reqBody,
+              status: resStatus,
+              resBody: resText.slice(0, 300),
+              content: null,
+            };
           }
-          const text = await res.text();
           let out = "";
-          for (const line of text.split(/\r?\n/)) {
+          for (const line of resText.split(/\r?\n/)) {
             if (!line.startsWith("data:")) continue;
             const payload = line.replace(/^data:\s*/, "").trim();
             if (!payload || payload === "[DONE]") continue;
@@ -281,7 +299,13 @@ export async function openOxalphaSession(
               /* ignore keep-alives */
             }
           }
-          return out;
+          return {
+            url,
+            reqBody,
+            status: resStatus,
+            resBody: resText.length > 300 ? resText.slice(0, 300) + "…" : resText,
+            content: out || null,
+          };
         },
         { baseUrl, m, system, user } as {
           baseUrl: string;
@@ -291,12 +315,35 @@ export async function openOxalphaSession(
         }
       ));
 
-      if (typeof content !== "string") return null;
-      if (content.startsWith("<error:")) {
-        console.error("[oxalphaBrowser]", content);
-        return null;
+      // Log the full call: URL, request body, response status, response snippet.
+      console.log(
+        "[oxalphaBrowser:req]",
+        JSON.stringify({
+          url: content?.url,
+          body: content?.reqBody,
+        })
+      );
+      console.log(
+        "[oxalphaBrowser:res]",
+        JSON.stringify({
+          url: content?.url,
+          status: content?.status,
+          body: content?.resBody,
+        })
+      );
+      if (typeof content?.content !== "string") {
+        console.error("[oxalphaBrowser] non-string / errored reply:", content?.status, content?.resBody);
+        return content
+          ? { content: null, url: content.url, reqBody: content.reqBody, status: content.status, resBody: content.resBody }
+          : null;
       }
-      return content || null;
+      return {
+        content: content.content || null,
+        url: content.url,
+        reqBody: content.reqBody,
+        status: content.status,
+        resBody: content.resBody,
+      };
     } catch (err) {
       console.error("[oxalphaBrowser] ask threw:", err);
       return null;

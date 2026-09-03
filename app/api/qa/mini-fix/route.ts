@@ -13,6 +13,7 @@ import {
   headerKey,
   type AiFix,
   type QaProvider,
+  type RawFetchReply,
 } from "@/lib/qaAgent";
 import { openOxalphaSession } from "@/lib/oxalphaBrowser";
 import { isValidQaKey } from "@/lib/qaKey";
@@ -134,7 +135,7 @@ export async function POST(request: NextRequest) {
     // force the manual cookie/turnstile fetch (needs pasted/env credentials).
     const browserMode = provider === "oxalpha" && process.env.OXALPHA_BROWSER !== "0";
     let oxSession: Awaited<ReturnType<typeof openOxalphaSession>> | null = null;
-    let rawFetch: ((system: string, user: string, model: string) => Promise<string | null>) | undefined;
+    let rawFetch: ((system: string, user: string, model: string) => Promise<RawFetchReply | null>) | undefined;
     if (browserMode) {
       try {
         oxSession = await openOxalphaSession({ model: oxAlphaCreds.model });

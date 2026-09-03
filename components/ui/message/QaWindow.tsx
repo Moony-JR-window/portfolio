@@ -161,6 +161,8 @@ interface RequestLog {
     temperature: number;
     max_tokens: number;
   };
+  status?: number;
+  responseBody?: string;
   response: Record<string, unknown> | null;
   result: {
     sender: string;
@@ -207,6 +209,119 @@ function formatBytes(bytes: number): string {
 function trunc(value: string, n: number): string {
   const s = (value ?? "").replace(/\s+/g, " ").trim();
   return s.length > n ? s.slice(0, n) + "…" : s;
+}
+
+/** Per-row AI request log list: url, request payload, status, response body. */
+function LogsView({ logs }: { logs: RequestLog[] }) {
+  const [open, setOpen] = useState<number | null>(null);
+  if (!logs.length) {
+    return (
+      <div style={{ fontSize: 12, color: "#8a8d91", padding: "20px 0", textAlign: "center" }}>
+        No AI request logs yet — run 🪄 Auto Types first.
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingTop: 8 }}>
+      {logs.map((l) => {
+        const isOpen = open === l.row;
+        return (
+          <div
+            key={`${l.row}-${l.timestamp}`}
+            style={{
+              border: "1px solid #d6e6e3",
+              borderRadius: 8,
+              background: "#fff",
+              overflow: "hidden",
+            }}
+          >
+            <button
+              onClick={() => setOpen(isOpen ? null : l.row)}
+              style={{
+                width: "100%",
+                border: "none",
+                background: "#f4faf9",
+                cursor: "pointer",
+                textAlign: "left",
+                padding: "8px 10px",
+                fontSize: 12,
+                display: "flex",
+                gap: 8,
+                alignItems: "center",
+              }}
+            >
+              <strong style={{ color: "#0f766e" }}>Row {l.row}</strong>
+              <span style={{ color: "#57606a" }}>{trunc(l.service, 24)}</span>
+              {typeof l.status === "number" && (
+                <span
+                  style={{
+                    marginLeft: "auto",
+                    fontWeight: 700,
+                    fontSize: 11,
+                    color: l.status >= 200 && l.status < 300 ? "#0f766e" : "#b91c1c",
+                    background: l.status >= 200 && l.status < 300 ? "#ecfdf5" : "#fef2f2",
+                    border: `1px solid ${l.status >= 200 && l.status < 300 ? "#a7f3d0" : "#fecaca"}`,
+                    borderRadius: 999,
+                    padding: "2px 8px",
+                  }}
+                >
+                  HTTP {l.status}
+                </span>
+              )}
+              {l.error && !isOpen && (
+                <span style={{ color: "#b91c1c", fontSize: 11 }}>⚠ {trunc(l.error, 40)}</span>
+              )}
+            </button>
+            {isOpen && (
+              <div style={{ padding: "8px 10px", fontSize: 11, color: "#3f4750", display: "grid", gap: 6 }}>
+                <LogBlock label="URL" text={l.url} />
+                <LogBlock label="Request body" text={JSON.stringify(l.payload, null, 2)} />
+                {typeof l.status === "number" && (
+                  <LogBlock label="Response status" text={String(l.status)} />
+                )}
+                {l.responseBody && <LogBlock label="Response body" text={l.responseBody} />}
+                {l.response && (
+                  <LogBlock label="AI response (parsed)" text={JSON.stringify(l.response, null, 2)} />
+                )}
+                {l.result && (
+                  <LogBlock
+                    label="Result"
+                    text={`Sender: ${l.result.sender} · Currency: ${l.result.senderCurrency} · Receiver: ${l.result.receiver} · Currency: ${l.result.receiverCurrency}`}
+                  />
+                )}
+                {l.error && <LogBlock label="Error" text={l.error} />}
+                <div style={{ color: "#8a8d91" }}>⏱ {l.timestamp}</div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function LogBlock({ label, text }: { label: string; text: string }) {
+  return (
+    <div>
+      <div style={{ fontWeight: 700, color: "#0f766e", marginBottom: 2 }}>{label}</div>
+      <pre
+        style={{
+          margin: 0,
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-word",
+          background: "#f6f8fa",
+          border: "1px solid #e4e9ee",
+          borderRadius: 6,
+          padding: "6px 8px",
+          maxHeight: 160,
+          overflow: "auto",
+          fontSize: 11,
+        }}
+      >
+        {text}
+      </pre>
+    </div>
+  );
 }
 
 /** Scrollable table rendering a preview matrix. */
@@ -1359,7 +1474,7 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
           </div>
 
           <div style={{ display: "flex", gap: 4, padding: "0 14px" }}>
-            {(["original", "fixed"] as const).map((tab) => (
+            {(["original", "fixed", "logs"] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -1376,13 +1491,22 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
                     activeTab === tab ? "2px solid #10b981" : "2px solid transparent",
                 }}
               >
-                {tab === "original" ? "Original" : "✅ Fixed"}
+                {tab === "original"
+                  ? "Original"
+                  : tab === "fixed"
+                    ? "✅ Fixed"
+                    : `📋 Logs${data.ai?.requestLogs?.length ? ` (${data.ai.requestLogs.length})` : ""}`}
               </button>
             ))}
           </div>
 
           <div style={{ flex: 1, overflow: "auto", padding: "0 14px 14px", minHeight: 0 }}>
-            <PreviewTable data={activeTab === "original" ? data.original : data.fixed} />
+            {activeTab === "logs" ? (
+              <LogsView logs={data.ai?.requestLogs ?? []} />
+            ) : (
+              <PreviewTable data={activeTab === "original" ? data.original : data.fixed} />
+            )}
+            {activeTab !== "logs" && (
             <div
               style={{
                 fontSize: 11,
@@ -1397,6 +1521,7 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
               Original = file as uploaded (merged cells blank) · Fixed =
               unmerged + renamed.
             </div>
+            )}
           </div>
 
           <div

@@ -522,13 +522,21 @@ async function askOxalpha(
   }
 }
 
+export interface RawFetchReply {
+  content: string | null;
+  url?: string;
+  status?: number;
+  resBody?: string;
+}
+
 /** Ask the AI agent for a JSON verdict. Returns null when every provider fails. */
 async function askAiJson(
   system: string,
   user: string,
   providerHint: QaProvider = "auto",
   oxCreds?: OxAlphaCreds,
-  rawFetch?: (system: string, user: string, model: string) => Promise<string | null>
+  rawFetch?: (system: string, user: string, model: string) => Promise<RawFetchReply | null>,
+  meta?: { status?: number; resBody?: string; url?: string }
 ): Promise<Record<string, unknown> | null> {
   // oxalpha.com uses a different auth model + returns SSE, so it gets a
   // dedicated call — no Bearer key, no /chat/completions, no pollinations fallback.
@@ -538,8 +546,16 @@ async function askAiJson(
     // a raw request into text without any pasted token. Fall back to the manual
     // cookie/turnstile fetch when no browser transport was supplied.
     if (rawFetch) {
-      const text = await rawFetch(system, user, cfg.model);
-      return text ? extractJsonObject(text) : null;
+      const reply = await rawFetch(system, user, cfg.model);
+      if (reply) {
+        if (meta) {
+          meta.status = reply.status;
+          meta.resBody = reply.resBody;
+          meta.url = reply.url;
+        }
+        return reply.content ? extractJsonObject(reply.content) : null;
+      }
+      return null;
     }
     return askOxalpha(system, user, cfg.model, cfg.baseUrl, oxCreds);
   }
@@ -612,12 +628,14 @@ async function askAiJson(
         }
 
         if (!res.ok) {
+          if (meta) meta.status = res.status;
           console.error(
             `[qaAgent] Provider ${res.status}:`,
             (await res.text()).slice(0, 300)
           );
           continue;
         }
+        if (meta) meta.status = res.status;
         const data = (await res.json()) as ChatChoice;
         const parsed = extractJsonObject(
           data.choices?.[0]?.message?.content ?? ""
@@ -650,12 +668,14 @@ async function askAiJson(
         signal: AbortSignal.timeout(25000),
       });
       if (!res.ok) {
+        if (meta) meta.status = res.status;
         console.error(
           "[qaAgent] Pollinations",
           res.status,
           (await res.text()).slice(0, 200)
         );
       } else {
+        if (meta) meta.status = res.status;
         const data = (await res.json()) as ChatChoice;
         const parsed = extractJsonObject(
           data.choices?.[0]?.message?.content ?? ""
@@ -706,6 +726,10 @@ export interface RequestLog {
     temperature: number;
     max_tokens: number;
   };
+  /** HTTP status code from the AI provider call, when known. */
+  status?: number;
+  /** Raw response body snippet from the AI provider call, when known. */
+  responseBody?: string;
   /** AI response from AI */
   response: Record<string, unknown> | null;
   /** Parsed result (sender/receiver types and currencies) */
@@ -1145,7 +1169,7 @@ async function askAccountTypeVerdict(
   providerHint: QaProvider = "auto",
   rowNum: number = 0,
   oxCreds?: OxAlphaCreds,
-  rawFetch?: (system: string, user: string, model: string) => Promise<string | null>
+  rawFetch?: (system: string, user: string, model: string) => Promise<RawFetchReply | null>
 ): Promise<{ verdict: AccountTypeVerdict | null; log: RequestLog }> {
   // Build simple command: "Wing to Wing From FC KHR-FC USD what is Sender_Account_Type, Account_Currency, Reciever_Account_Type, Reciever_Currency"
   const command = `${input.service || "?"} ${input.text || ""} what is Sender_Account_Type, Account_Currency, Reciever_Account_Type, Reciever_Currency`;
@@ -1181,7 +1205,12 @@ async function askAccountTypeVerdict(
   };
 
   try {
-    const raw = await askAiJson(ACCOUNT_TYPE_SYSTEM_PROMPT, command, providerHint, oxCreds, rawFetch);
+    // Capture the raw transport info (url/status/response body) into the log.
+    const meta: { status?: number; resBody?: string; url?: string } = {};
+    const raw = await askAiJson(ACCOUNT_TYPE_SYSTEM_PROMPT, command, providerHint, oxCreds, rawFetch, meta);
+    if (meta.url) log.url = meta.url;
+    if (meta.status !== undefined) log.status = meta.status;
+    if (meta.resBody !== undefined) log.responseBody = meta.resBody;
     if (!raw) {
       log.error = "AI returned null or all providers failed";
       return { verdict: null, log };
@@ -1276,7 +1305,7 @@ export async function miniFixAccountTypes(
   providerHint: QaProvider = "auto",
   maxRows = 250,
   oxCreds?: OxAlphaCreds,
-  rawFetch?: (system: string, user: string, model: string) => Promise<string | null>
+  rawFetch?: (system: string, user: string, model: string) => Promise<RawFetchReply | null>
 ): Promise<AiAgentResult> {
   const base: AiAgentResult = {
     available: false,
