@@ -128,9 +128,20 @@ export async function POST(request: NextRequest) {
       .map((r) => (r || []).map((v) => (v === null || v === undefined ? "" : String(v))));
 
     const profile = await loadReferenceProfile();
-    // oxalpha browser mode (same as mini-fix): one real Chrome on
-    // oxalpha.com/chat solves Turnstile and carries the session for every row.
-    const browserMode = provider === "oxalpha" && process.env.OXALPHA_BROWSER !== "0";
+    // oxalpha provider priority (same as mini-fix):
+    //   1) DIRECT FETCH (Postman-proven): with a session Cookie + XSRF
+    //      (pasted creds or OXALPHA_COOKIE/OXALPHA_CSRF_TOKEN env) the plain
+    //      request works — no browser, no Turnstile token. Fast.
+    //   2) BROWSER fallback: only without direct creds, launch real Chrome to
+    //      solve Turnstile and carry the session.
+    const hasDirectCreds = Boolean(
+      (oxAlphaCreds.cookie && oxAlphaCreds.csrf) ||
+        (process.env.OXALPHA_COOKIE && process.env.OXALPHA_CSRF_TOKEN)
+    );
+    const browserMode =
+      provider === "oxalpha" &&
+      !hasDirectCreds &&
+      process.env.OXALPHA_BROWSER !== "0";
     let oxSession: Awaited<ReturnType<typeof openOxalphaSession>> | null = null;
     let rawFetch: ((system: string, user: string, model: string) => Promise<RawFetchReply | null>) | undefined;
     if (browserMode) {

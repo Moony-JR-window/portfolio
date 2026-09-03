@@ -131,17 +131,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // oxalpha runs in "browser" mode by default: open a real Chrome on
-    // oxalpha.com/chat once and reuse it for every row so Turnstile is solved by
-    // the browser (domain-valid token) and session cookies/XSRF are the
-    // browser's own — the "fully automatic" path. Set OXALPHA_BROWSER=0 to
-    // force the manual cookie/turnstile fetch (needs pasted/env credentials).
-    //
-    // OXALPHA ONLY: when the user picks ⚡ oxalpha we never silently switch to
-    // another AI (no DeepSeek/Pollinations fallback). If oxalpha cannot answer
-    // (e.g. Vercel serverless has no browser/Turnstile), the row simply fails
-    // and the 📋 Logs tab shows the exact URL/status/response for each failure.
-    const browserMode = provider === "oxalpha" && process.env.OXALPHA_BROWSER !== "0";
+    // Provider priority for oxalpha:
+    //   1) DIRECT FETCH (Postman-proven): when a session Cookie is available
+    //      (env OXALPHA_COOKIE / OXALPHA_CSRF_TOKEN or pasted creds) the plain
+    //      HTTPS request works — no browser, no Turnstile token needed. Fast.
+    //   2) BROWSER fallback: only when no cookie is configured, launch a real
+    //      Chrome on oxalpha.com/chat to solve Turnstile and carry the session.
+    const hasDirectCreds = Boolean(
+      (oxAlphaCreds.cookie && oxAlphaCreds.csrf) ||
+        (process.env.OXALPHA_COOKIE && process.env.OXALPHA_CSRF_TOKEN)
+    );
+    const browserMode =
+      provider === "oxalpha" &&
+      !hasDirectCreds &&
+      process.env.OXALPHA_BROWSER !== "0";
     let oxSession: Awaited<ReturnType<typeof openOxalphaSession>> | null = null;
     let rawFetch: ((system: string, user: string, model: string) => Promise<RawFetchReply | null>) | undefined;
     if (browserMode) {

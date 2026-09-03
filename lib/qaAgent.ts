@@ -477,17 +477,17 @@ async function askOxalpha(
     "cf-turnstile-response";
   const url = `${baseUrl}/api/chat`;
 
+  // Mirror the PROVEN working request (Postman test): Content-Type + Cookie
+  // (+ x-csrf-token when available). Postman succeeds with no Origin/Referer/
+  // User-Agent/Turnstile at all, so keep the request minimal.
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     Accept: "application/json, text/event-stream",
-    Origin: baseUrl,
-    Referer: `${baseUrl}/chat`,
-    "User-Agent":
-      "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Mobile Safari/537.36",
   };
   if (csrf) headers["x-csrf-token"] = csrf;
   if (cookie) headers["Cookie"] = cookie;
-  // Many Turnstile-protected servers read the token from the standard header.
+  // Only attach a Turnstile token when we actually have one (never an empty
+  // header — an empty token can itself trigger the verification check).
   if (turnstile && turnstileField === "cf-turnstile-response") {
     headers["cf-turnstile-response"] = turnstile;
   }
