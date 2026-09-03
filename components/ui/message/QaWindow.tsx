@@ -214,6 +214,8 @@ function trunc(value: string, n: number): string {
 /** Per-row AI request log list: url, request payload, status, response body. */
 function LogsView({ logs }: { logs: RequestLog[] }) {
   const [open, setOpen] = useState<number | null>(null);
+  const [showAll, setShowAll] = useState(false);
+  const PAGE = 25;
   if (!logs.length) {
     return (
       <div style={{ fontSize: 12, color: "#8a8d91", padding: "20px 0", textAlign: "center" }}>
@@ -221,9 +223,24 @@ function LogsView({ logs }: { logs: RequestLog[] }) {
       </div>
     );
   }
+  const failed = logs.filter((l) => typeof l.status === "number" && (l.status < 200 || l.status >= 300)).length;
+  const errored = logs.filter((l) => l.error).length;
+  const visible = showAll ? logs : logs.slice(0, PAGE);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingTop: 8 }}>
-      {logs.map((l) => {
+      <div style={{ fontSize: 11, color: "#57606a", display: "flex", gap: 10, alignItems: "center" }}>
+        <span>
+          {logs.length} call{logs.length === 1 ? "" : "s"}
+        </span>
+        {failed > 0 && <span style={{ color: "#b91c1c", fontWeight: 700 }}>⛔ {failed} failed</span>}
+        {errored > 0 && <span style={{ color: "#b45309", fontWeight: 700 }}>⚠ {errored} with errors</span>}
+        {!showAll && logs.length > PAGE && (
+          <span style={{ marginLeft: "auto", color: "#8a8d91" }}>
+            showing first {PAGE} — click “Show all” below
+          </span>
+        )}
+      </div>
+      {visible.map((l) => {
         const isOpen = open === l.row;
         return (
           <div
@@ -296,6 +313,23 @@ function LogsView({ logs }: { logs: RequestLog[] }) {
           </div>
         );
       })}
+      {!showAll && logs.length > PAGE && (
+        <button
+          onClick={() => setShowAll(true)}
+          style={{
+            border: "1px solid #d6e6e3",
+            borderRadius: 8,
+            background: "#f4faf9",
+            color: "#0f766e",
+            fontWeight: 700,
+            fontSize: 12,
+            cursor: "pointer",
+            padding: "8px 10px",
+          }}
+        >
+          Show all {logs.length} logs ({logs.length - PAGE} more)
+        </button>
+      )}
     </div>
   );
 }
