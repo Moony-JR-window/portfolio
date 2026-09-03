@@ -133,7 +133,21 @@ export async function POST(request: NextRequest) {
     // the browser (domain-valid token) and session cookies/XSRF are the
     // browser's own — the "fully automatic" path. Set OXALPHA_BROWSER=0 to
     // force the manual cookie/turnstile fetch (needs pasted/env credentials).
-    const browserMode = provider === "oxalpha" && process.env.OXALPHA_BROWSER !== "0";
+    //
+    // Vercel/serverless guardrail: there is no Chrome binary, the 60s function
+    // limit kills a browser batch, and Cloudflare Turnstile challenges
+    // datacenter IPs — so on Vercel we transparently fall back to the
+    // configured key provider / Pollinations instead of returning null rows.
+    const onVercel = Boolean(process.env.VERCEL);
+    let effectiveProvider: QaProvider = provider;
+    if (provider === "oxalpha" && onVercel) {
+      effectiveProvider = "auto";
+      console.warn(
+        "[mini-fix] provider=oxalpha requested on Vercel — no Chrome/Turnstile possible in serverless; falling back to the auto provider chain (key provider -> Pollinations)."
+      );
+    }
+    const browserMode =
+      effectiveProvider === "oxalpha" && process.env.OXALPHA_BROWSER !== "0";
     let oxSession: Awaited<ReturnType<typeof openOxalphaSession>> | null = null;
     let rawFetch: ((system: string, user: string, model: string) => Promise<RawFetchReply | null>) | undefined;
     if (browserMode) {
@@ -152,13 +166,19 @@ export async function POST(request: NextRequest) {
         headers,
         dataRows,
         profile,
-        provider,
+        effectiveProvider,
         undefined,
         oxAlphaCreds,
         rawFetch
       );
     } finally {
       if (oxSession) await oxSession.close().catch(() => {});
+    }
+    if (provider === "oxalpha" && effectiveProvider !== provider) {
+      agent.summary =
+        `⚡ oxalpha is not available on Vercel (no browser / Turnstile) — ` +
+        `the run was completed with the fallback provider instead. ` +
+        (agent.summary || "");
     }
 
     // ---- 3) Apply ONLY the account-type fixes + export ----
