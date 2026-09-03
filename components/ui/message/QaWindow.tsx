@@ -333,20 +333,23 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
   // ---- AI mode: DeepSeek vs Free AI (both require access key) ----
   const [aiMode, setAiMode] = useState<"deepseek" | "free">("free");
     // ---- Free AI provider selector ----
-  type FreeProvider = "moonybot" | "deepseek" | "other";
+  type FreeProvider = "moonybot" | "deepseek" | "oxalpha" | "other";
   const [freeProvider, setFreeProvider] = useState<FreeProvider>("moonybot");
   const [showComingSoon, setShowComingSoon] = useState(false);
   // Map the window's selector to the backend QaProvider hint that selects the
   // actual endpoint. Both "DeepSeek" pickers (top-level AI model and the Free
   // AI provider) always target DeepSeek and never fall back to Groq; MoonyBot
-  // always targets Groq; "Other" is the keyless Pollinations fallback.
+  // always targets Groq; ⚡ oxalpha always targets the oxalpha /api/chat
+  // endpoint; "Other" is the keyless Pollinations fallback.
   const providerHint: string =
     aiMode === "free"
       ? freeProvider === "moonybot"
         ? "groq"
         : freeProvider === "deepseek"
           ? "deepseek"
-          : "pollinations"
+          : freeProvider === "oxalpha"
+            ? "oxalpha"
+            : "pollinations"
       : "deepseek";
 
   // ---- Elapsed time counter for QA / Auto Types ----
@@ -388,7 +391,6 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
 
   // Load cached file on mount (persists across browser sessions)
   useEffect(() => {
-    console.log("QaWindow mounted, checking for cached file...");
     void loadFileFromCache()
       .then((cached) => {
         if (cached) {
@@ -890,6 +892,23 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
                 </button>
                 <button
                   type="button"
+                  onClick={() => setFreeProvider("oxalpha")}
+                  style={{
+                    flex: 1,
+                    border: "none",
+                    padding: "6px 8px",
+                    fontSize: 11,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    background: freeProvider === "oxalpha" ? "#0ea5e9" : "#f7f9fb",
+                    color: freeProvider === "oxalpha" ? "#fff" : "#3f4750",
+                    transition: "background .15s, color .15s",
+                  }}
+                >
+                  ⚡ oxalpha
+                </button>
+                <button
+                  type="button"
                   onClick={() => {
                     setFreeProvider("other");
                     setShowComingSoon(true);
@@ -980,6 +999,22 @@ export default function QaWindow({ onClose }: { onClose: () => void }) {
                   style={{ ...inputStyle, flex: 1, minWidth: 0 }}
                 />
               </label>
+            )}
+            {freeProvider === "oxalpha" && (
+              <div
+                style={{
+                  fontSize: 11,
+                  color: "#065f46",
+                  background: "#ecfdf5",
+                  border: "1px solid #a7f3d0",
+                  borderRadius: 6,
+                  padding: "5px 8px",
+                }}
+              >
+                ⚡ oxalpha is fully automatic — a private browser session on
+                oxalpha.com/chat handles the Turnstile check and session for you.
+                No cookies or tokens to paste. Just click 🪄 Auto Types.
+              </div>
             )}
             {freeProvider === "other" && showComingSoon && (
               <div

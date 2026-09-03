@@ -349,7 +349,29 @@ interface ChatChoice {
 }
 
 /** Providers the QA window can explicitly select in Free AI mode. */
-export type QaProvider = "groq" | "deepseek" | "pollinations" | "auto";
+export type QaProvider = "groq" | "deepseek" | "pollinations" | "oxalpha" | "auto";
+
+/**
+ * Session credentials required by the keyless oxalpha.com chat endpoint.
+ * Unlike Groq/DeepSeek (Bearer token) the oxalpha endpoint authenticates with a
+ * browser session: the `Cookie` header (ox_alpha_session=...; XSRF-TOKEN=...)
+ * plus the matching `x-csrf-token`. Pass them per-run from the QA window or set
+ * OXALPHA_COOKIE / OXALPHA_CSRF_TOKEN / OXALPHA_MODEL env vars instead. The
+ * session token only lasts ~2 hours, then it must be refreshed.
+ */
+export interface OxAlphaCreds {
+  cookie?: string;
+  csrf?: string;
+  model?: string;
+  /** Cloudflare Turnstile verification token, captured fresh from the browser.
+   *  Short-lived (~5 min) and single-use; must be re-copied each run once the
+   *  endpoint starts returning "turnstile_required" (428). */
+  turnstile?: string;
+  /** Name of the field/header the endpoint expects for the token. Defaults to
+   *  Cloudflare's standard "cf-turnstile-response". Override via env
+   *  OXALPHA_TURNSTILE_FIELD if DevTools shows a different name. */
+  turnstileField?: string;
+}
 
 /** Resolve provider config. "groq" -> Groq endpoint (never DeepSeek);
  * "deepseek" -> DeepSeek endpoint; "pollinations" -> keyless only;
@@ -385,6 +407,16 @@ function resolveQaConfig(providerHint: QaProvider): {
       model: process.env.AI_MODEL || "openai/gpt-oss-120b",
     };
   }
+  // oxalpha.com — keyless but session-bound. The endpoint is authenticated with
+  // the browser Cookie + XSRF token (not a Bearer key), so apiKey stays null and
+  // askAiJson routes it through askOxalpha() (SSE response, session headers).
+  if (providerHint === "oxalpha") {
+    return {
+      apiKey: null,
+      baseUrl: (process.env.OXALPHA_URL || "https://oxalpha.com").replace(/\/+$/, ""),
+      model: process.env.OXALPHA_MODEL || "z-ai/glm-5.3-flash",
+    };
+  }
   // "auto": prefer DeepSeek overrides if configured, else Groq.
   const apiKey = process.env.AI_QA_API_KEY || process.env.AI_API_KEY;
   if (apiKey) {
@@ -398,12 +430,119 @@ function resolveQaConfig(providerHint: QaProvider): {
   return { apiKey: null, baseUrl: "", model: "" };
 }
 
+/** Concatenate assistant text out of a text/event-stream reply (the oxalpha
+ *  /api/chat endpoint always streams, even without a stream flag). */
+function parseSse(text: string): string {
+  let out = "";
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.startsWith("data:")) continue;
+    const payload = line.replace(/^data:\s*/, "").trim();
+    if (!payload || payload === "[DONE]") continue;
+    try {
+      const obj = JSON.parse(payload) as {
+        choices?: { delta?: { content?: string }; message?: { content?: string } }[];
+        message?: { content?: string };
+      };
+      const delta = obj.choices?.[0]?.delta?.content;
+      const msg = obj.choices?.[0]?.message?.content;
+      const content = obj.message?.content;
+      const piece = delta ?? msg ?? content;
+      if (typeof piece === "string") out += piece;
+    } catch {
+      // non-JSON keep-alive / comment line — ignore
+    }
+  }
+  return out;
+}
+
+/** Call the keyless oxalpha.com chat endpoint directly with the browser-session
+ *  Cookie + XSRF headers (mirrors the request captured in the DevTools network
+ *  tab) and parse the SSE reply. Returns null when no usable JSON comes back. */
+async function askOxalpha(
+  system: string,
+  user: string,
+  model: string,
+  baseUrl: string,
+  creds?: OxAlphaCreds
+): Promise<Record<string, unknown> | null> {
+  const cookie = creds?.cookie?.trim() || process.env.OXALPHA_COOKIE || "";
+  const csrf = creds?.csrf?.trim() || process.env.OXALPHA_CSRF_TOKEN || "";
+  const turnstile =
+    creds?.turnstile?.trim() || process.env.OXALPHA_TURNSTILE_TOKEN || "";
+  // Cloudflare's standard field name for a Turnstile token; configurable in
+  // case oxalpha's endpoint reads a different key (see DevTools request body).
+  const turnstileField =
+    (creds?.turnstileField && creds.turnstileField.trim()) ||
+    process.env.OXALPHA_TURNSTILE_FIELD ||
+    "cf-turnstile-response";
+  const url = `${baseUrl}/api/chat`;
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "application/json, text/event-stream",
+    Origin: baseUrl,
+    Referer: `${baseUrl}/chat`,
+    "User-Agent":
+      "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Mobile Safari/537.36",
+  };
+  if (csrf) headers["x-csrf-token"] = csrf;
+  if (cookie) headers["Cookie"] = cookie;
+  // Many Turnstile-protected servers read the token from the standard header.
+  if (turnstile && turnstileField === "cf-turnstile-response") {
+    headers["cf-turnstile-response"] = turnstile;
+  }
+
+  const body: Record<string, unknown> = {
+    model,
+    messages: [{ role: "user", content: `${system}\n\n${user}` }],
+  };
+  // Include the token in the JSON body too, under the (configurable) field name.
+  if (turnstile) body[turnstileField] = turnstile;
+
+  try {
+    // oxalpha.com rejects a "system" role (payload format: only user/assistant
+    // with plain-string content, as seen in the captured reference request), so
+    // the JSON instruction is folded into the single user message.
+    const res = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(45000),
+    });
+    if (!res.ok) {
+      console.error("[qaAgent] oxalpha", res.status, (await res.text()).slice(0, 300));
+      return null;
+    }
+    const text = await res.text();
+    const content = parseSse(text);
+    return extractJsonObject(content) || extractJsonObject(text);
+  } catch (err) {
+    console.error("[qaAgent] oxalpha fetch threw:", err);
+    return null;
+  }
+}
+
 /** Ask the AI agent for a JSON verdict. Returns null when every provider fails. */
 async function askAiJson(
   system: string,
   user: string,
-  providerHint: QaProvider = "auto"
+  providerHint: QaProvider = "auto",
+  oxCreds?: OxAlphaCreds,
+  rawFetch?: (system: string, user: string, model: string) => Promise<string | null>
 ): Promise<Record<string, unknown> | null> {
+  // oxalpha.com uses a different auth model + returns SSE, so it gets a
+  // dedicated call — no Bearer key, no /chat/completions, no pollinations fallback.
+  if (providerHint === "oxalpha") {
+    const cfg = resolveQaConfig(providerHint);
+    // Browser/journal mode: a real browser already solved Turnstile and can turn
+    // a raw request into text without any pasted token. Fall back to the manual
+    // cookie/turnstile fetch when no browser transport was supplied.
+    if (rawFetch) {
+      const text = await rawFetch(system, user, cfg.model);
+      return text ? extractJsonObject(text) : null;
+    }
+    return askOxalpha(system, user, cfg.model, cfg.baseUrl, oxCreds);
+  }
   const cfg = resolveQaConfig(providerHint);
   if (cfg.apiKey) {
         const { apiKey, baseUrl, model } = cfg;
@@ -1004,17 +1143,22 @@ async function askAccountTypeVerdict(
     allowedReceiver: string[];
   },
   providerHint: QaProvider = "auto",
-  rowNum: number = 0
+  rowNum: number = 0,
+  oxCreds?: OxAlphaCreds,
+  rawFetch?: (system: string, user: string, model: string) => Promise<string | null>
 ): Promise<{ verdict: AccountTypeVerdict | null; log: RequestLog }> {
   // Build simple command: "Wing to Wing From FC KHR-FC USD what is Sender_Account_Type, Account_Currency, Reciever_Account_Type, Reciever_Currency"
   const command = `${input.service || "?"} ${input.text || ""} what is Sender_Account_Type, Account_Currency, Reciever_Account_Type, Reciever_Currency`;
 
   // Resolve provider config for logging
   const cfg = resolveQaConfig(providerHint);
+  const isOxalpha = providerHint === "oxalpha";
   const isPollinations = providerHint === "pollinations" || !cfg.apiKey;
-  const url = isPollinations
-    ? "https://text.pollinations.ai/openai"
-    : `${cfg.baseUrl}/chat/completions`;
+  const url = isOxalpha
+    ? `${cfg.baseUrl}/api/chat`
+    : isPollinations
+      ? "https://text.pollinations.ai/openai"
+      : `${cfg.baseUrl}/chat/completions`;
 
   const log: RequestLog = {
     row: rowNum,
@@ -1037,7 +1181,7 @@ async function askAccountTypeVerdict(
   };
 
   try {
-    const raw = await askAiJson(ACCOUNT_TYPE_SYSTEM_PROMPT, command, providerHint);
+    const raw = await askAiJson(ACCOUNT_TYPE_SYSTEM_PROMPT, command, providerHint, oxCreds, rawFetch);
     if (!raw) {
       log.error = "AI returned null or all providers failed";
       return { verdict: null, log };
@@ -1130,7 +1274,9 @@ export async function miniFixAccountTypes(
   rows: string[][],
   profile: ReferenceProfile,
   providerHint: QaProvider = "auto",
-  maxRows = 250
+  maxRows = 250,
+  oxCreds?: OxAlphaCreds,
+  rawFetch?: (system: string, user: string, model: string) => Promise<string | null>
 ): Promise<AiAgentResult> {
   const base: AiAgentResult = {
     available: false,
@@ -1190,7 +1336,9 @@ export async function miniFixAccountTypes(
           allowedReceiver: profile.receiverAccountTypes,
         },
         providerHint,
-        rowNum
+        rowNum,
+        oxCreds,
+        rawFetch
       );
 
       // Collect request log

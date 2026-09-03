@@ -14,6 +14,7 @@ import {
   type AiFix,
   type QaProvider,
 } from "@/lib/qaAgent";
+import { openOxalphaSession } from "@/lib/oxalphaBrowser";
 import { isValidQaKey } from "@/lib/qaKey";
 
 export const maxDuration = 60;
@@ -67,8 +68,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Choose the AI provider for the account-type pass (groq/deepseek/pollinations).
+    // Choose the AI provider for the account-type pass (groq/deepseek/pollinations/oxalpha).
     const provider = String(formData.get("provider") || "auto") as QaProvider;
+
+    // Optional oxalpha.com session credentials (Cookie + XSRF token + model +
+    // Turnstile token). Only consumed when provider === "oxalpha"; otherwise ignored.
+    const oxAlphaCreds = {
+      cookie: String(formData.get("oxcookie") || ""),
+      csrf: String(formData.get("oxcsrf") || ""),
+      model: String(formData.get("oxmodel") || "") || undefined,
+      turnstile: String(formData.get("oxturnstile") || "") || undefined,
+      turnstileField:
+        String(formData.get("oxturnstilefield") || "") || undefined,
+    };
 
     const sheetName = String(formData.get("sheet") || "");
     let headerRow = Number(formData.get("headerRow"));
@@ -114,7 +126,39 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
-        const agent = await miniFixAccountTypes(headers, dataRows, profile, provider);
+
+    // oxalpha runs in "browser" mode by default: open a real Chrome on
+    // oxalpha.com/chat once and reuse it for every row so Turnstile is solved by
+    // the browser (domain-valid token) and session cookies/XSRF are the
+    // browser's own — the "fully automatic" path. Set OXALPHA_BROWSER=0 to
+    // force the manual cookie/turnstile fetch (needs pasted/env credentials).
+    const browserMode = provider === "oxalpha" && process.env.OXALPHA_BROWSER !== "0";
+    let oxSession: Awaited<ReturnType<typeof openOxalphaSession>> | null = null;
+    let rawFetch: ((system: string, user: string, model: string) => Promise<string | null>) | undefined;
+    if (browserMode) {
+      try {
+        oxSession = await openOxalphaSession({ model: oxAlphaCreds.model });
+        rawFetch = oxSession.ask;
+      } catch (err) {
+        console.error("[mini-fix] oxalpha browser launch failed:", err);
+        oxSession = null;
+      }
+    }
+
+    let agent;
+    try {
+      agent = await miniFixAccountTypes(
+        headers,
+        dataRows,
+        profile,
+        provider,
+        undefined,
+        oxAlphaCreds,
+        rawFetch
+      );
+    } finally {
+      if (oxSession) await oxSession.close().catch(() => {});
+    }
 
     // ---- 3) Apply ONLY the account-type fixes + export ----
     const colByKey = new Map<string, number>();
