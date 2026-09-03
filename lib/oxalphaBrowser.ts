@@ -100,6 +100,39 @@ export async function openOxalphaSession(
   });
 
   const page = opts.page || (await browser.newPage());
+
+  // Hook into every later /api/chat request oxalpha's own UI makes so we can
+  // capture the exact Turnstile token + session it uses (guaranteed valid).
+  await page.evaluateOnNewDocument(() => {
+    try {
+      (window as { __oxTurnstileToken?: string }).__oxTurnstileToken = "";
+      const orig = window.fetch.bind(window);
+      (window as unknown as { fetch: typeof fetch }).fetch = (
+        input: RequestInfo | URL,
+        init?: RequestInit
+      ) => {
+        try {
+          if (String(input).includes("/api/chat") && init && init.body) {
+            const body = JSON.parse(
+              String(init.body ?? init.body)
+            ) as Record<string, unknown>;
+            const tok =
+              (body["cf-turnstile-response"] as string) ||
+              (body["turnstile"] as string) ||
+              (body["token"] as string) ||
+              "";
+            if (tok) (window as { __oxTurnstileToken?: string }).__oxTurnstileToken = tok;
+          }
+        } catch {
+          /* ignore */
+        }
+        return orig(input, init);
+      };
+    } catch {
+      /* ignore */
+    }
+  });
+
   await page.goto(`${baseUrl}/chat`, {
     waitUntil: "networkidle2",
     timeout: 60000,
@@ -119,14 +152,86 @@ export async function openOxalphaSession(
     try {
       const content = (await page.evaluate(
         async ({ baseUrl, m, system, user }) => {
-          // Extract the Turnstile token from whatever widget the page rendered.
-          const w = window as unknown as {
-            turnstile?: { getResponse?: () => string };
-          };
-          const turnstileToken =
-            (typeof w.turnstile?.getResponse === "function" &&
-              w.turnstile.getResponse()) ||
-            "";
+          // ---- Get a Turnstile token valid for THIS (oxalpha.com) origin ----
+          async function getTurnstileToken(): Promise<string> {
+            const w = window as unknown as {
+              turnstile?: {
+                getResponse?: (id?: string) => string;
+                render?: (
+                  el: HTMLElement,
+                  opts: Record<string, unknown>
+                ) => string;
+                reset?: (id?: string) => void;
+              };
+            };
+            const turnstile = w.turnstile;
+            if (!turnstile) return "";
+
+            // 1) token captured from oxalpha's own /api/chat requests
+            const captured = (window as { __oxTurnstileToken?: string })
+              .__oxTurnstileToken;
+            if (captured) return captured;
+
+            // 2) hidden input value (implicit widget)
+            const hiddenInput = document.querySelector<HTMLInputElement>(
+              'input[name="cf-turnstile-response"]'
+            );
+            if (hiddenInput && hiddenInput.value) return hiddenInput.value;
+
+            // 3) getResponse() guarded (throws without implicit widget id)
+            if (typeof turnstile.getResponse === "function") {
+              try {
+                const t = turnstile.getResponse();
+                if (t) return t;
+              } catch {
+                /* explicit widget — fall through to own render */
+              }
+            }
+
+            // 4) render our OWN widget with oxalpha's sitekey (the page IS
+            //    oxalpha.com, so any token minted here is domain-valid).
+            let sitekey = "";
+            const skEl = document.querySelector("[data-sitekey]");
+            if (skEl) sitekey = skEl.getAttribute("data-sitekey") || "";
+            if (!sitekey) {
+              for (const s of document.scripts) {
+                const mm = s.textContent?.match(/0x4AAAA[A-Za-z0-9]{8,}/);
+                if (mm) {
+                  sitekey = mm[0];
+                  break;
+                }
+              }
+            }
+            if (!sitekey || typeof turnstile.render !== "function") return "";
+            if (document.getElementById("__oxcap")) return ""; // already busy
+            const render = turnstile.render;
+
+            const box = document.createElement("div");
+            box.id = "__oxcap";
+            box.style.position = "absolute";
+            box.style.top = "-9999px";
+            document.body.appendChild(box);
+
+            let token = "";
+            await new Promise<void>((resolve) => {
+              try {
+                render(box, {
+                  sitekey,
+                  callback: (t: string) => {
+                    token = t;
+                    (window as { __oxTurnstileToken?: string }).__oxTurnstileToken = t;
+                    resolve();
+                  },
+                });
+                setTimeout(() => resolve(), 15000); // safety timeout
+              } catch {
+                resolve();
+              }
+            });
+            return token;
+          }
+
+          const turnstileToken = await getTurnstileToken();
 
           // XSRF from the session cookie jar (matches the Laravel convention).
           const xsrf = document.cookie
