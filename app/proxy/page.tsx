@@ -49,14 +49,16 @@ export default function ProxyPage() {
   return (
     <main
       style={{
-        minHeight: "100vh",
+        height: "100dvh",
+        width: "100%",
         background: "linear-gradient(160deg, #05080d 0%, #0a1018 100%)",
         color: "#9fffcf",
         fontFamily: "'Fira Code', 'JetBrains Mono', monospace",
-        padding: 24,
+        padding: 16,
         display: "flex",
         flexDirection: "column",
-        gap: 12,
+        gap: 10,
+        overflow: "hidden",
       }}
     >
       <h1 style={{ fontSize: 18, letterSpacing: 2, color: "#41ff9c", margin: 0 }}>
@@ -101,26 +103,47 @@ export default function ProxyPage() {
           GO →
         </button>
         {activeUrl && (
-          <button
-            type="button"
-            onClick={() => setActiveUrl("")}
-            style={{
-              background: "transparent",
-              border: "1px solid #5a7a6855",
-              color: "#5a7a68",
-              borderRadius: 6,
-              padding: "8px 12px",
-              cursor: "pointer",
-              fontFamily: "inherit",
-              fontSize: 13,
-            }}
-          >
-            ✕ close
-          </button>
+          <>
+            <a
+              href={activeUrl}
+              target="_blank"
+              rel="noreferrer"
+              title="Open the relayed page in a new tab (fixes sites that won't render in the frame)"
+              style={{
+                background: "#0b141c",
+                border: "1px solid #e8c46a55",
+                color: "#e8c46a",
+                borderRadius: 6,
+                padding: "8px 12px",
+                cursor: "pointer",
+                fontFamily: "inherit",
+                fontSize: 13,
+                textDecoration: "none",
+              }}
+            >
+              ↗ direct
+            </a>
+            <button
+              type="button"
+              onClick={() => setActiveUrl("")}
+              style={{
+                background: "transparent",
+                border: "1px solid #5a7a6855",
+                color: "#5a7a68",
+                borderRadius: 6,
+                padding: "8px 12px",
+                cursor: "pointer",
+                fontFamily: "inherit",
+                fontSize: 13,
+              }}
+            >
+              ✕ close
+            </button>
+          </>
         )}
       </form>
 
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", flexShrink: 0 }}>
         {QUICK_LINKS.map((q) => (
           <button
             key={q.url}
@@ -147,22 +170,48 @@ export default function ProxyPage() {
       <div
         style={{
           flex: 1,
+          minHeight: 0,
           border: "1px solid #1f3a2e",
           borderRadius: 10,
           overflow: "hidden",
           background: "#fff",
-          minHeight: 320,
+          position: "relative",
         }}
       >
         {activeUrl ? (
-          <iframe
-            ref={iframeRef}
-            src={activeUrl}
-            onLoad={() => setLoading(false)}
-            title="Proxied page"
-            style={{ width: "100%", height: "100%", minHeight: 320, border: 0 }}
-            sandbox="allow-scripts allow-same-origin allow-popups"
-          />
+          <>
+            <iframe
+              ref={iframeRef}
+              src={activeUrl}
+              onLoad={() => setLoading(false)}
+              title="Proxied page"
+              style={{
+                position: "absolute",
+                inset: 0,
+                width: "100%",
+                height: "100%",
+                border: 0,
+              }}
+              sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+            />
+            <div
+              style={{
+                position: "absolute",
+                left: 0,
+                right: 0,
+                bottom: 0,
+                background: "#05080dd9",
+                color: "#5a7a68",
+                fontSize: 11,
+                padding: "3px 10px",
+                fontFamily: "inherit",
+                pointerEvents: "none",
+              }}
+            >
+              blank page? heavy-SPA sites break inside the frame — use{" "}
+              <span style={{ color: "#e8c46a" }}>↗ direct</span> to open the relayed page in a new tab
+            </div>
+          </>
         ) : (
           <div
             style={{
