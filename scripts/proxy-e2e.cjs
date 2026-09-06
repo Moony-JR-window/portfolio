@@ -1,7 +1,9 @@
-/* E2E: reproduce the YouTube-search-inside-proxy flow in a real browser. */
+/* E2E: reproduce the YouTube-search + sign-in flow in a real browser. */
 const puppeteer = require("puppeteer-core");
 const fs = require("fs");
 
+const PORT = process.env.PORT || "3210";
+const ORIGIN = "http://localhost:" + PORT;
 const OUT = "d:/otherProject/portfolio/e2e-result.txt";
 const lines = [];
 const log = (s) => {
@@ -37,8 +39,8 @@ const log = (s) => {
   });
 
   try {
-    log("goto /proxy");
-    await page.goto("http://localhost:3000/proxy", {
+    log("goto /proxy (" + ORIGIN + ")");
+    await page.goto(ORIGIN + "/proxy", {
       waitUntil: "networkidle2",
       timeout: 60000,
     });
@@ -51,11 +53,12 @@ const log = (s) => {
       await new Promise((r) => setTimeout(r, 500));
       frame = page
         .frames()
-        .find((f) => f.url().startsWith("http://localhost:3000/api/proxy"));
+        .find((f) => f.url().startsWith(ORIGIN + "/api/proxy"));
     }
     log("frame: " + (frame ? frame.url().slice(0, 120) : "NOT FOUND"));
     if (!frame) throw new Error("relayed frame not found");
 
+    /* ---- PART A: search box (the core complaint) ---- */
     const selectors = [
       "input#search",
       "input[name=search_query]",
@@ -87,8 +90,7 @@ const log = (s) => {
     await new Promise((r) => setTimeout(r, 400));
     await page.keyboard.press("Enter");
     log("pressed Enter, waiting…");
-
-    await new Promise((r) => setTimeout(r, 20000));
+    await new Promise((r) => setTimeout(r, 18000));
 
     log("--- frames after search ---");
     for (const f of page.frames()) {
@@ -107,6 +109,45 @@ const log = (s) => {
         `FRAME ${short(f.url())} | title="${title.slice(0, 60)}" | 404=${is404} | results=${hasResults}`
       );
     }
+
+    /* ---- PART B: sign-in (best effort — Google may script-navigate away) ---- */
+    log("--- sign-in attempt ---");
+    try {
+      frame = page
+        .frames()
+        .find((f) => f.url().startsWith(ORIGIN + "/api/proxy/p/"));
+      if (frame) {
+        const signInSelectors = [
+          'a[aria-label*="Sign in"]',
+          'a[aria-label*=\'Sign in\']',
+          "tp-yt-paper-button[aria-label*='Sign in']",
+          "a#button[aria-label*='Sign in']",
+          "button[aria-label*='Sign in']",
+        ];
+        for (const sel of signInSelectors) {
+          try {
+            const found = await frame.$(sel);
+            if (found) {
+              await found.click();
+              break;
+            }
+          } catch (e) {
+            /* keep trying */
+          }
+        }
+      }
+      await new Promise((r) => setTimeout(r, 5000));
+      for (const f of page.frames()) {
+        const isAcct =
+          f.url().includes("accounts.google.com") || f.url().includes("ServiceLogin");
+        if (isAcct) {
+          log("accounts/relay frame: " + short(f.url()));
+        }
+      }
+    } catch (e) {
+      log("sign-in attempt error: " + (e && e.message));
+    }
+
     log("--- request/response log (last 120) ---");
     for (const e of events.slice(-120)) log(e);
   } catch (e) {

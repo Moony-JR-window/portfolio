@@ -40,28 +40,14 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { clientIp, rememberProxyTarget } from "@/lib/proxyLast";
 import { cookieHeaderFor, readSetCookies, storeCookies } from "@/lib/proxyCookies";
+import { fetch as undiciFetch } from "undici";
 
 export const dynamic = "force-dynamic";
 
-// Use undici's fetch directly for upstream requests: Next.js patches the
-// global fetch for caching, which can drop Headers.getSetCookie() and even
-// override redirect:"manual" — both are required for the cookie jar and the
-// login redirect chains below. Falls back to the global fetch if undici is
-// ever unavailable. (Lazy-loaded so there's no top-level await in this route.)
-let upstreamFetch: typeof globalThis.fetch | null = null;
-async function getUpstreamFetch(): Promise<typeof globalThis.fetch> {
-  if (upstreamFetch) return upstreamFetch;
-  try {
-    const mod = await import("undici");
-    if (mod?.fetch) {
-      upstreamFetch = mod.fetch as unknown as typeof globalThis.fetch;
-    }
-  } catch {
-    /* stay on the global fetch */
-  }
-  if (!upstreamFetch) upstreamFetch = globalThis.fetch;
-  return upstreamFetch;
-}
+// Upstream requests use undici's fetch directly (NOT the global fetch Next.js
+// patches): the patched one drops Headers.getSetCookie() and overrides
+// redirect:"manual", both of which the relay needs for login cookies and
+// hop-by-hop redirect following.
 
 /* ------------------------------------------------------------------ *
  * Tokens — base64url(directory)                                       *
@@ -368,30 +354,38 @@ async function handle(request: NextRequest): Promise<NextResponse> {
     body = await request.arrayBuffer();
   }
 
-  let upstream: Response | null = null;
+  let lastRes: Awaited<ReturnType<typeof undiciFetch>> | null = null;
+  let finalUrl = target.toString(); // URL of the last hop (post-redirect)
   try {
-    // Manual redirect following so cookies survive the whole chain: with
-    // redirect:"follow" undici discards intermediate responses — and login
-    // flows (Google sign-in!) set cookies on 302 hops before landing.
+    // Manual redirect following so cookies survive the whole chain: a plain
+    // redirect:"follow" discards intermediate 30x responses — and login flows
+    // (Google sign-in!) set cookies on those hops before landing.
     const ip = clientIp(request);
     let currentUrl = new URL(target.toString());
     let currentMethod = method;
     let currentBody: ArrayBuffer | undefined = body;
 
-    for (let hop = 0; hop < 10; hop++) {
-      const outHeaders: Record<string, string> = {
+    for (let hop = 0; hop < 12; hop++) {
+      const outHeaders: Record<string, string | undefined> = {
         "User-Agent":
           request.headers.get("user-agent") ||
           "Mozilla/5.0 (compatible; PortfolioProxy/1.0)",
         Accept:
           request.headers.get("accept") ||
           "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": request.headers.get("accept-language") || "en-US,en;q=0.9",
+        "Accept-Language":
+          request.headers.get("accept-language") || "en-US,en;q=0.9",
       };
       const hasBody =
-        currentBody && currentBody.byteLength > 0 && currentMethod !== "GET" && currentMethod !== "HEAD";
-      const requestType = request.headers.get("content-type");
-      if (requestType && hasBody) outHeaders["Content-Type"] = requestType;
+        currentBody &&
+        currentBody.byteLength > 0 &&
+        currentMethod !== "GET" &&
+        currentMethod !== "HEAD";
+      if (hasBody) {
+        const requestType = request.headers.get("content-type");
+        if (requestType) outHeaders["Content-Type"] = requestType;
+        outHeaders["Content-Length"] = String(currentBody!.byteLength);
+      }
       // CSRF checks (Google/YouTube sign-in) validate Origin on POSTs — it
       // must be the TARGET's origin, not this app's.
       if (currentMethod !== "GET" && currentMethod !== "HEAD") {
@@ -401,7 +395,7 @@ async function handle(request: NextRequest): Promise<NextResponse> {
       const cookie = cookieHeaderFor(ip, currentUrl.hostname);
       if (cookie) outHeaders["Cookie"] = cookie;
 
-      const res = await (await getUpstreamFetch())(currentUrl.toString(), {
+      const res = await undiciFetch(currentUrl.toString(), {
         method: currentMethod,
         redirect: "manual",
         headers: outHeaders,
@@ -419,12 +413,14 @@ async function handle(request: NextRequest): Promise<NextResponse> {
       if ([301, 302, 303, 307, 308].includes(res.status)) {
         const location = res.headers.get("location");
         if (!location) {
-          upstream = res;
+          lastRes = res;
+          finalUrl = currentUrl.toString();
           break;
         }
         const next = new URL(location, currentUrl);
         if (next.protocol !== "http:" && next.protocol !== "https:") {
-          upstream = res;
+          lastRes = res;
+          finalUrl = currentUrl.toString();
           break;
         }
         // 303 always becomes GET; 301/302 downgrade POST to GET (browser
@@ -440,37 +436,34 @@ async function handle(request: NextRequest): Promise<NextResponse> {
         continue;
       }
 
-      upstream = res;
+      lastRes = res;
+      finalUrl = currentUrl.toString();
       break;
     }
 
-    if (!upstream) throw new Error("too many redirects");
+    if (!lastRes) throw new Error("too many redirects");
   } catch (error) {
+    const detail =
+      error instanceof Error
+        ? (error.stack ?? error.message)
+        : JSON.stringify(error);
     return NextResponse.json(
       {
         error: "Fetch failed (site unreachable, timeout, or blocked this server)",
-        detail: String(error),
+        detail,
       },
       { status: 502 }
     );
   }
-  if (!upstream) {
+  if (!lastRes) {
     return NextResponse.json(
       { error: "Fetch failed (redirect chain did not resolve)" },
       { status: 502 }
     );
   }
+  const upstream = lastRes;
 
   const contentType = upstream.headers.get("content-type") || "";
-  // The relay follows redirects itself — report where we really landed.
-  let finalUrl = target.toString();
-  if (upstream.url && /^https?:/i.test(upstream.url)) {
-    try {
-      finalUrl = new URL(upstream.url).toString();
-    } catch {
-      /* keep target */
-    }
-  }
 
   // Remember the site this visitor is currently surfing — the root catch-all
   // fallback (app/[...proxyFallback]) uses it to rescue location-based
@@ -493,9 +486,10 @@ async function handle(request: NextRequest): Promise<NextResponse> {
   if (disposition) headers.set("Content-Disposition", disposition);
 
   // HTML — rewrite so navigation + subresources all stay inside the relay.
+  const upstreamBody = await upstream.arrayBuffer();
   if (contentType.includes("text/html")) {
     const docDir = dirOf(new URL(finalUrl));
-    const html0 = decodeBody(await upstream.arrayBuffer(), contentType);
+    const html0 = decodeBody(upstreamBody, contentType);
     // If the page declares its own <base>, resolve against it.
     let dir = docDir;
     const origBase = html0.match(/<base\b[^>]*\bhref\s*=\s*(["'])([^"']+)\1/i);
@@ -515,17 +509,20 @@ async function handle(request: NextRequest): Promise<NextResponse> {
   // so backgrounds/fonts/@imports keep flowing through the relay too.
   if (contentType.includes("text/css")) {
     const css = rewriteCssUrls(
-      decodeBody(await upstream.arrayBuffer(), contentType),
+      decodeBody(upstreamBody, contentType),
       dirOf(new URL(finalUrl))
     );
     headers.set("Content-Type", "text/css; charset=utf-8");
     return new NextResponse(css, { status: upstream.status, headers });
   }
 
-  // Everything else (images, js, json, pdf, …) — stream through untouched.
-  const passthrough = upstream.body ?? (await upstream.arrayBuffer());
+  // Everything else (images, js, json, pdf, …) — pass through untouched.
   headers.set("Content-Type", contentType || "application/octet-stream");
-  return new NextResponse(passthrough, { status: upstream.status, headers });
+  if (upstream.status === 204 || upstream.status === 205 || upstream.status === 304) {
+    // Null-body statuses must not be constructed with a body.
+    return new NextResponse(null, { status: upstream.status, headers });
+  }
+  return new NextResponse(upstreamBody, { status: upstream.status, headers });
 }
 
 export const GET = handle;
@@ -534,3 +531,4 @@ export const POST = handle;
 export const PUT = handle;
 export const PATCH = handle;
 export const DELETE = handle;
+// touch

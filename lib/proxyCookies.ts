@@ -89,11 +89,12 @@ function splitSetCookies(joined: string): string[] {
     .filter(Boolean);
 }
 
-/** Read Set-Cookie headers robustly across runtimes/patches. */
-export function readSetCookies(headers: Headers): string[] {
-  const h = headers as Headers & { getSetCookie?: () => string[] };
-  if (typeof h.getSetCookie === "function") {
-    const list = h.getSetCookie();
+/** Read Set-Cookie headers robustly across runtimes (works with undici/Next). */
+export function readSetCookies(
+  headers: { getSetCookie?: () => string[]; get(name: string): string | null }
+): string[] {
+  if (typeof headers.getSetCookie === "function") {
+    const list = headers.getSetCookie();
     if (list && list.length) return list;
   }
   const joined = headers.get("set-cookie");
