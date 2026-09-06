@@ -23,6 +23,7 @@ const QUICK_LINKS = [
 export default function ProxyPage() {
   const [input, setInput] = useState("");
   const [activeUrl, setActiveUrl] = useState("");
+  const [target, setTarget] = useState(""); // real URL the frame is showing
   const [loading, setLoading] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -31,6 +32,7 @@ export default function ProxyPage() {
     if (!normalized) return;
     if (!/^https?:\/\//i.test(normalized)) normalized = `https://${normalized}`;
     setActiveUrl(`/api/proxy?url=${encodeURIComponent(normalized)}`);
+    setTarget(normalized);
     setInput(normalized);
     setLoading(true);
   }, []);
@@ -40,6 +42,24 @@ export default function ProxyPage() {
     const fromQuery = new URLSearchParams(window.location.search).get("url");
     if (fromQuery) load(fromQuery);
   }, [load]);
+
+  // The relay injects a runtime patch into every proxied page; when the user
+  // navigates INSIDE the frame it reports the real (post-redirect) target URL
+  // here — keep the address bar and the deep link (?url=…) in sync.
+  useEffect(() => {
+    function onMessage(e: MessageEvent) {
+      const data = e.data as { source?: string; type?: string; url?: string } | null;
+      if (!data || data.source !== "proxy-frame" || data.type !== "navigated") return;
+      if (iframeRef.current && e.source !== iframeRef.current.contentWindow) return;
+      if (typeof data.url !== "string" || !/^https?:\/\//i.test(data.url)) return;
+      setTarget(data.url);
+      setInput(data.url);
+      setLoading(true);
+      window.history.replaceState(null, "", `/proxy?url=${encodeURIComponent(data.url)}`);
+    }
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -105,7 +125,11 @@ export default function ProxyPage() {
         {activeUrl && (
           <>
             <a
-              href={activeUrl}
+              href={
+                target
+                  ? `/api/proxy?url=${encodeURIComponent(target)}`
+                  : activeUrl
+              }
               target="_blank"
               rel="noreferrer"
               title="Open the relayed page in a new tab (fixes sites that won't render in the frame)"
@@ -125,7 +149,10 @@ export default function ProxyPage() {
             </a>
             <button
               type="button"
-              onClick={() => setActiveUrl("")}
+              onClick={() => {
+                setActiveUrl("");
+                setTarget("");
+              }}
               style={{
                 background: "transparent",
                 border: "1px solid #5a7a6855",
