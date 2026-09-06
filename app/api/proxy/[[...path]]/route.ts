@@ -38,7 +38,30 @@
 
 import { NextRequest, NextResponse } from "next/server";
 
+import { clientIp, rememberProxyTarget } from "@/lib/proxyLast";
+import { cookieHeaderFor, readSetCookies, storeCookies } from "@/lib/proxyCookies";
+
 export const dynamic = "force-dynamic";
+
+// Use undici's fetch directly for upstream requests: Next.js patches the
+// global fetch for caching, which can drop Headers.getSetCookie() and even
+// override redirect:"manual" — both are required for the cookie jar and the
+// login redirect chains below. Falls back to the global fetch if undici is
+// ever unavailable. (Lazy-loaded so there's no top-level await in this route.)
+let upstreamFetch: typeof globalThis.fetch | null = null;
+async function getUpstreamFetch(): Promise<typeof globalThis.fetch> {
+  if (upstreamFetch) return upstreamFetch;
+  try {
+    const mod = await import("undici");
+    if (mod?.fetch) {
+      upstreamFetch = mod.fetch as unknown as typeof globalThis.fetch;
+    }
+  } catch {
+    /* stay on the global fetch */
+  }
+  if (!upstreamFetch) upstreamFetch = globalThis.fetch;
+  return upstreamFetch;
+}
 
 /* ------------------------------------------------------------------ *
  * Tokens — base64url(directory)                                       *
@@ -345,32 +368,95 @@ async function handle(request: NextRequest): Promise<NextResponse> {
     body = await request.arrayBuffer();
   }
 
-  let upstream: Response;
+  let upstream: Response | null = null;
   try {
-    const outHeaders: Record<string, string> = {
-      "User-Agent":
-        request.headers.get("user-agent") ||
-        "Mozilla/5.0 (compatible; PortfolioProxy/1.0)",
-      Accept:
-        request.headers.get("accept") ||
-        "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      "Accept-Language": request.headers.get("accept-language") || "en-US,en;q=0.9",
-    };
-    const requestType = request.headers.get("content-type");
-    if (requestType) outHeaders["Content-Type"] = requestType;
-    upstream = await fetch(target.toString(), {
-      method,
-      redirect: "follow",
-      headers: outHeaders,
-      body: body && body.byteLength > 0 ? body : undefined,
-      signal: AbortSignal.timeout(15000),
-    });
+    // Manual redirect following so cookies survive the whole chain: with
+    // redirect:"follow" undici discards intermediate responses — and login
+    // flows (Google sign-in!) set cookies on 302 hops before landing.
+    const ip = clientIp(request);
+    let currentUrl = new URL(target.toString());
+    let currentMethod = method;
+    let currentBody: ArrayBuffer | undefined = body;
+
+    for (let hop = 0; hop < 10; hop++) {
+      const outHeaders: Record<string, string> = {
+        "User-Agent":
+          request.headers.get("user-agent") ||
+          "Mozilla/5.0 (compatible; PortfolioProxy/1.0)",
+        Accept:
+          request.headers.get("accept") ||
+          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": request.headers.get("accept-language") || "en-US,en;q=0.9",
+      };
+      const hasBody =
+        currentBody && currentBody.byteLength > 0 && currentMethod !== "GET" && currentMethod !== "HEAD";
+      const requestType = request.headers.get("content-type");
+      if (requestType && hasBody) outHeaders["Content-Type"] = requestType;
+      // CSRF checks (Google/YouTube sign-in) validate Origin on POSTs — it
+      // must be the TARGET's origin, not this app's.
+      if (currentMethod !== "GET" && currentMethod !== "HEAD") {
+        outHeaders["Origin"] = currentUrl.origin;
+      }
+      // Replay the visitor's stored cookies for this target host.
+      const cookie = cookieHeaderFor(ip, currentUrl.hostname);
+      if (cookie) outHeaders["Cookie"] = cookie;
+
+      const res = await (await getUpstreamFetch())(currentUrl.toString(), {
+        method: currentMethod,
+        redirect: "manual",
+        headers: outHeaders,
+        body: hasBody ? currentBody : undefined,
+        signal: AbortSignal.timeout(15000),
+      });
+
+      // Capture Set-Cookie at EVERY hop (the browser can't hold these — they
+      // belong to the upstream domain — so the jar stores them server-side).
+      const setCookies = readSetCookies(res.headers);
+      if (setCookies.length) {
+        storeCookies(ip, currentUrl.hostname, setCookies);
+      }
+
+      if ([301, 302, 303, 307, 308].includes(res.status)) {
+        const location = res.headers.get("location");
+        if (!location) {
+          upstream = res;
+          break;
+        }
+        const next = new URL(location, currentUrl);
+        if (next.protocol !== "http:" && next.protocol !== "https:") {
+          upstream = res;
+          break;
+        }
+        // 303 always becomes GET; 301/302 downgrade POST to GET (browser
+        // behavior); 307/308 preserve method + body.
+        if (
+          res.status === 303 ||
+          ((res.status === 301 || res.status === 302) && currentMethod === "POST")
+        ) {
+          currentMethod = "GET";
+          currentBody = undefined;
+        }
+        currentUrl = next;
+        continue;
+      }
+
+      upstream = res;
+      break;
+    }
+
+    if (!upstream) throw new Error("too many redirects");
   } catch (error) {
     return NextResponse.json(
       {
         error: "Fetch failed (site unreachable, timeout, or blocked this server)",
         detail: String(error),
       },
+      { status: 502 }
+    );
+  }
+  if (!upstream) {
+    return NextResponse.json(
+      { error: "Fetch failed (redirect chain did not resolve)" },
       { status: 502 }
     );
   }
@@ -384,6 +470,18 @@ async function handle(request: NextRequest): Promise<NextResponse> {
     } catch {
       /* keep target */
     }
+  }
+
+  // Remember the site this visitor is currently surfing — the root catch-all
+  // fallback (app/[...proxyFallback]) uses it to rescue location-based
+  // escapes whose referer was stripped, instead of 404-ing on this app.
+  try {
+    const upstreamOrigin = new URL(finalUrl).origin;
+    if (upstreamOrigin !== request.nextUrl.origin) {
+      rememberProxyTarget(clientIp(request), upstreamOrigin);
+    }
+  } catch {
+    /* memory is best-effort */
   }
 
   const headers = new Headers();

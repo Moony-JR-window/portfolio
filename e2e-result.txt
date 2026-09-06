@@ -1,0 +1,131 @@
+goto /proxy
+frame: http://localhost:3000/api/proxy?url=https%3A%2F%2Fwww.youtube.com%2F
+search box: input#search
+pressed Enter, waiting…
+--- frames after search ---
+FRAME http://localhost:3000/proxy?url=https%3A%2F%2Fwww.youtube.com%2F | title="Rorn Mony — MooNyDev | Full-Stack & QA Engineer" | 404=true | results=false
+FRAME http://localhost:3000/ | title="YouTube" | 404=false | results=false
+FRAME http://localhost:3000/api/proxy/p/aHR0cHM6Ly9h…/ServiceLogin?service=youtube&uilel=3&passive=true&continue=https%3A%2F%2Fwww.youtube.com%2Fsignin%3Faction_handl | title="YouTube" | 404=false | results=false
+FRAME about:blank | title="" | 404=false | results=false
+FRAME http://localhost:3000/api/proxy/p/aHR0cHM6Ly9h…/bscframe | title="" | 404=false | results=false
+--- request/response log (last 120) ---
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+REQ[relay] GET http://localhost:3000/api/proxy/p/aHR0cHM6Ly9z…/ad_status.js ref=http://localhost:3000/
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 403 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9q…/GenerateIT
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly93…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+REQ[relay] POST http://localhost:3000/api/proxy/p/aHR0cHM6Ly9q…/GenerateIT ref=http://localhost:3000/
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 403 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9q…/GenerateIT
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly93…/192px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+REQ[relay] POST http://localhost:3000/api/proxy/p/aHR0cHM6Ly9q…/GenerateIT ref=http://localhost:3000/
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly93…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly93…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly93…/24px.svg
+RES[relay] 403 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9q…/GenerateIT
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly93…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9m…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly93…/24px.svg
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly93…/remote.js
+REQ[relay] GET http://localhost:3000/api/proxy/p/aHR0cHM6Ly93…/cast_sender.js ref=http://localhost:3000/
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly93…/miniplayer.js
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly93…/offline.js
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly93…/cast_sender.js
+REQ[relay] GET http://localhost:3000/api/proxy/p/aHR0cHM6Ly93…/cast_sender.js ref=http://localhost:3000/
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9z…/ad_status.js
+RES[relay] 200 http://localhost:3000/api/proxy/p/aHR0cHM6Ly93…/cast_sender.js
+REQ[relay] POST http://localhost:3000/api/proxy/p/aHR0cHM6Ly9q…/GenerateIT ref=http://localhost:3000/
+RES[relay] 403 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9q…/GenerateIT
+REQ[relay] GET http://localhost:3000/api/proxy/p/aHR0cHM6Ly9y…/videoplayback?expire=9107996619&ei=x7JBZOw-s_9i3eRPkeXEoeH&ip=59.34.61.68&id=o-AFF0L9eBhIiimFshd3GaUAoJjmaznsgEg ref=http://localhost:3000/
+REQ[relay] GET http://localhost:3000/api/proxy/p/aHR0cHM6Ly9y…/videoplayback?expire=9107996619&ei=x7JBZOw-s_9i3eRPkeXEoeH&ip=59.34.61.68&id=o-AFF0L9eBhIiimFshd3GaUAoJjmaznsgEg ref=http://localhost:3000/
+RES[relay] 403 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9y…/videoplayback?expire=9107996619&ei=x7JBZOw-s_9i3eRPkeXEoeH&ip=59.34.61.68&id=o-AFF0L9eBhIiimFshd3GaUAoJjmaznsgEg
+REQ[relay] GET http://localhost:3000/api/proxy/p/aHR0cHM6Ly9y…/videoplayback?expire=9107996619&ei=x7JBZOw-s_9i3eRPkeXEoeH&ip=59.34.61.68&id=o-AFF0L9eBhIiimFshd3GaUAoJjmaznsgEg ref=http://localhost:3000/
+RES[relay] 403 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9y…/videoplayback?expire=9107996619&ei=x7JBZOw-s_9i3eRPkeXEoeH&ip=59.34.61.68&id=o-AFF0L9eBhIiimFshd3GaUAoJjmaznsgEg
+REQ[relay] GET http://localhost:3000/api/proxy/p/aHR0cHM6Ly9y…/videoplayback?expire=9107996619&ei=x7JBZOw-s_9i3eRPkeXEoeH&ip=59.34.61.68&id=o-AFF0L9eBhIiimFshd3GaUAoJjmaznsgEg ref=http://localhost:3000/
+REQ[relay] POST http://localhost:3000/api/proxy/p/aHR0cHM6Ly9q…/GenerateIT ref=http://localhost:3000/
+RES[relay] 502 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9y…/videoplayback?expire=9107996619&ei=x7JBZOw-s_9i3eRPkeXEoeH&ip=59.34.61.68&id=o-AFF0L9eBhIiimFshd3GaUAoJjmaznsgEg
+REQ[relay] GET http://localhost:3000/api/proxy/p/aHR0cHM6Ly9y…/videoplayback?expire=9107996619&ei=x7JBZOw-s_9i3eRPkeXEoeH&ip=59.34.61.68&id=o-AFF0L9eBhIiimFshd3GaUAoJjmaznsgEg ref=http://localhost:3000/
+RES[relay] 502 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9y…/videoplayback?expire=9107996619&ei=x7JBZOw-s_9i3eRPkeXEoeH&ip=59.34.61.68&id=o-AFF0L9eBhIiimFshd3GaUAoJjmaznsgEg
+REQ[relay] GET http://localhost:3000/api/proxy/p/aHR0cHM6Ly9y…/videoplayback?expire=9107996619&ei=x7JBZOw-s_9i3eRPkeXEoeH&ip=59.34.61.68&id=o-AFF0L9eBhIiimFshd3GaUAoJjmaznsgEg ref=http://localhost:3000/
+RES[relay] 403 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9q…/GenerateIT
+RES[relay] 502 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9y…/videoplayback?expire=9107996619&ei=x7JBZOw-s_9i3eRPkeXEoeH&ip=59.34.61.68&id=o-AFF0L9eBhIiimFshd3GaUAoJjmaznsgEg
+RES[relay] 403 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9y…/videoplayback?expire=9107996619&ei=x7JBZOw-s_9i3eRPkeXEoeH&ip=59.34.61.68&id=o-AFF0L9eBhIiimFshd3GaUAoJjmaznsgEg
+REQ[relay] GET http://localhost:3000/api/proxy/p/aHR0cHM6Ly9y…/videoplayback?expire=8222703980&ei=ewSbE31PM9CnmHoVl8jMMgI&ip=62.6.82.85&id=o-AFFD7M6Oq8ew9BBsZh8nEsmV3UuUona5th ref=http://localhost:3000/
+REQ[relay] GET http://localhost:3000/api/proxy/p/aHR0cHM6Ly9y…/videoplayback?expire=8222703980&ei=ewSbE31PM9CnmHoVl8jMMgI&ip=62.6.82.85&id=o-AFFD7M6Oq8ew9BBsZh8nEsmV3UuUona5th ref=http://localhost:3000/
+REQ[relay] POST http://localhost:3000/api/proxy/p/aHR0cHM6Ly9q…/GenerateIT ref=http://localhost:3000/
+RES[relay] 502 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9y…/videoplayback?expire=8222703980&ei=ewSbE31PM9CnmHoVl8jMMgI&ip=62.6.82.85&id=o-AFFD7M6Oq8ew9BBsZh8nEsmV3UuUona5th
+REQ[relay] GET http://localhost:3000/api/proxy/p/aHR0cHM6Ly9y…/videoplayback?expire=8222703980&ei=ewSbE31PM9CnmHoVl8jMMgI&ip=62.6.82.85&id=o-AFFD7M6Oq8ew9BBsZh8nEsmV3UuUona5th ref=http://localhost:3000/
+RES[relay] 403 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9q…/GenerateIT
+RES[relay] 502 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9y…/videoplayback?expire=8222703980&ei=ewSbE31PM9CnmHoVl8jMMgI&ip=62.6.82.85&id=o-AFFD7M6Oq8ew9BBsZh8nEsmV3UuUona5th
+REQ[relay] GET http://localhost:3000/api/proxy/p/aHR0cHM6Ly9y…/videoplayback?expire=8222703980&ei=ewSbE31PM9CnmHoVl8jMMgI&ip=62.6.82.85&id=o-AFFD7M6Oq8ew9BBsZh8nEsmV3UuUona5th ref=http://localhost:3000/
+RES[relay] 403 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9y…/videoplayback?expire=8222703980&ei=ewSbE31PM9CnmHoVl8jMMgI&ip=62.6.82.85&id=o-AFFD7M6Oq8ew9BBsZh8nEsmV3UuUona5th
+REQ[relay] GET http://localhost:3000/api/proxy/p/aHR0cHM6Ly9y…/videoplayback?expire=8222703980&ei=ewSbE31PM9CnmHoVl8jMMgI&ip=62.6.82.85&id=o-AFFD7M6Oq8ew9BBsZh8nEsmV3UuUona5th ref=http://localhost:3000/
+RES[relay] 502 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9y…/videoplayback?expire=8222703980&ei=ewSbE31PM9CnmHoVl8jMMgI&ip=62.6.82.85&id=o-AFFD7M6Oq8ew9BBsZh8nEsmV3UuUona5th
+RES[relay] 502 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9y…/videoplayback?expire=8222703980&ei=ewSbE31PM9CnmHoVl8jMMgI&ip=62.6.82.85&id=o-AFFD7M6Oq8ew9BBsZh8nEsmV3UuUona5th
+REQ[relay] GET http://localhost:3000/api/proxy/p/aHR0cHM6Ly9y…/videoplayback?expire=8222703980&ei=ewSbE31PM9CnmHoVl8jMMgI&ip=62.6.82.85&id=o-AFFD7M6Oq8ew9BBsZh8nEsmV3UuUona5th ref=http://localhost:3000/
+RES[relay] 403 http://localhost:3000/api/proxy/p/aHR0cHM6Ly9y…/videoplayback?expire=8222703980&ei=ewSbE31PM9CnmHoVl8jMMgI&ip=62.6.82.85&id=o-AFFD7M6Oq8ew9BBsZh8nEsmV3UuUona5th
