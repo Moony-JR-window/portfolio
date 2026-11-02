@@ -36,6 +36,12 @@
     ".next/dev/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules"
-  ]
+  "node_modules",
+  ".next",
+  "_debug_*.js",
+  "_debug_*.py",
+  "_extract_*.js",
+  "_restyle.js",
+  "_wire_*.py"
+]
 }

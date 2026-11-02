@@ -29,12 +29,21 @@
 // CSP frame-ancestors) are stripped so pages can render inside the
 // mini-browser's <iframe>.
 //
+// COOKIE JAR — login flows (Google OAuth, YouTube, etc.) work because:
+//   • every upstream Set-Cookie is captured server-side;
+//   • every request gets a synthesized Cookie header for the target host;
+//   • redirect chains are followed manually so cookies survive the whole chain.
+//
+// PUBLIC ACCESS — CORS headers (Access-Control-Allow-Origin: *) allow any
+//   origin to call this proxy. No authentication required.
+//
 // LIMITATIONS (by design — this is a portfolio demo, not a VPN):
-//   • Cookies/sessions are not forwarded, so logins won't persist.
 //   • Sites that bot-block server IPs (Cloudflare challenges) show their
 //     challenge page instead of content.
 //   • WebSockets and hardcoded cross-origin URLs inside JS bundles are not
 //     intercepted.
+//   • The cookie jar is in-memory and per-client-IP (shared by all visitors
+//     behind the same NAT / reverse proxy).
 
 import { NextRequest, NextResponse } from "next/server";
 
@@ -48,6 +57,64 @@ export const dynamic = "force-dynamic";
 // patches): the patched one drops Headers.getSetCookie() and overrides
 // redirect:"manual", both of which the relay needs for login cookies and
 // hop-by-hop redirect following.
+
+/* ------------------------------------------------------------------ *\
+  * Upstream request headers — forward everything a real browser sends  *\
+  * Google OAuth (and many other auth providers) checks these strictly. *\
+  * ------------------------------------------------------------------ */
+
+/** Build a header map from the visitor request — mirrors a real browser. */
+function upstreamHeaders(req: NextRequest, targetUrl: URL): Record<string, string> {
+  const h: Record<string, string> = {};
+
+  // Always use the visitor's real User-Agent (or a browser-like default).
+  // Hardcoded "PortfolioProxy/1.0" is a dead giveaway that gets blocked.
+  const visitorUA = req.headers.get("user-agent");
+  h["User-Agent"] =
+    visitorUA ||
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
+
+  // Accept headers
+  h["Accept"] =
+    req.headers.get("accept") ||
+    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8";
+  h["Accept-Language"] =
+    req.headers.get("accept-language") || "en-US,en;q=0.9";
+  h["Accept-Encoding"] =
+    req.headers.get("accept-encoding") || "gzip, deflate, br";
+  h["Accept-Charset"] =
+    req.headers.get("accept-charset") || "UTF-8";
+
+  // Origin — MUST be target URL's origin (NOT this app's origin) for OAuth
+  // to work. Google validates Origin on GET and POST during authorization flow.
+  h["Origin"] = targetUrl.origin;
+
+  // Referer — some sites (including Google) check this for CSRF
+  const referer = req.headers.get("referer");
+  if (referer) {
+    h["Referer"] = referer;
+  }
+
+  // Modern browser security headers — Google & many OAuth providers verify these
+  const secChUa = req.headers.get("sec-ch-ua");
+  if (secChUa) h["Sec-CH-UA"] = secChUa;
+  const secChUaMobile = req.headers.get("sec-ch-ua-mobile");
+  if (secChUaMobile) h["Sec-CH-UA-Mobile"] = secChUaMobile;
+  const secChUaPlatform = req.headers.get("sec-ch-ua-platform");
+  if (secChUaPlatform) h["Sec-CH-UA-Platform"] = secChUaPlatform;
+  const secFetchDest = req.headers.get("sec-fetch-dest");
+  if (secFetchDest) h["Sec-Fetch-Dest"] = secFetchDest;
+  const secFetchMode = req.headers.get("sec-fetch-mode");
+  if (secFetchMode) h["Sec-Fetch-Mode"] = secFetchMode;
+  const secFetchSite = req.headers.get("sec-fetch-site");
+  if (secFetchSite) h["Sec-Fetch-Site"] = secFetchSite;
+  const secFetchUser = req.headers.get("sec-fetch-user");
+  if (secFetchUser) h["Sec-Fetch-User"] = secFetchUser;
+  const secCsrf = req.headers.get("sec-custom-token") || req.headers.get("x-csrf-token");
+  if (secCsrf) h["X-CSRF-Token"] = secCsrf;
+
+  return h;
+}
 
 /* ------------------------------------------------------------------ *
  * Tokens — base64url(directory)                                       *
@@ -366,16 +433,10 @@ async function handle(request: NextRequest): Promise<NextResponse> {
     let currentBody: ArrayBuffer | undefined = body;
 
     for (let hop = 0; hop < 12; hop++) {
-      const outHeaders: Record<string, string | undefined> = {
-        "User-Agent":
-          request.headers.get("user-agent") ||
-          "Mozilla/5.0 (compatible; PortfolioProxy/1.0)",
-        Accept:
-          request.headers.get("accept") ||
-          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language":
-          request.headers.get("accept-language") || "en-US,en;q=0.9",
-      };
+      // Start with a full browser-like header set (UA, Accept, Sec-* etc.)
+      // Google OAuth and many auth providers validate these strictly.
+      const outHeaders: Record<string, string | undefined> = upstreamHeaders(request, currentUrl);
+
       const hasBody =
         currentBody &&
         currentBody.byteLength > 0 &&
@@ -386,11 +447,6 @@ async function handle(request: NextRequest): Promise<NextResponse> {
         if (requestType) outHeaders["Content-Type"] = requestType;
         outHeaders["Content-Length"] = String(currentBody!.byteLength);
       }
-      // CSRF checks (Google/YouTube sign-in) validate Origin on POSTs — it
-      // must be the TARGET's origin, not this app's.
-      if (currentMethod !== "GET" && currentMethod !== "HEAD") {
-        outHeaders["Origin"] = currentUrl.origin;
-      }
       // Replay the visitor's stored cookies for this target host.
       const cookie = cookieHeaderFor(ip, currentUrl.hostname);
       if (cookie) outHeaders["Cookie"] = cookie;
@@ -398,7 +454,7 @@ async function handle(request: NextRequest): Promise<NextResponse> {
       const res = await undiciFetch(currentUrl.toString(), {
         method: currentMethod,
         redirect: "manual",
-        headers: outHeaders,
+        headers: outHeaders as HeadersInit,
         body: hasBody ? currentBody : undefined,
         signal: AbortSignal.timeout(15000),
       });
@@ -481,6 +537,13 @@ async function handle(request: NextRequest): Promise<NextResponse> {
   headers.set("Cache-Control", "no-store");
   headers.set("Content-Security-Policy", "frame-ancestors 'self'");
   headers.set("X-Frame-Options", "SAMEORIGIN");
+  headers.set("Access-Control-Allow-Origin", "*");
+  headers.set(
+    "Access-Control-Allow-Methods",
+    "GET, POST, PUT, DELETE, PATCH, OPTIONS"
+  );
+  headers.set("Access-Control-Allow-Headers", "*");
+  headers.set("Access-Control-Max-Age", "86400");
   if (/^[\x20-\x7E]*$/.test(finalUrl)) headers.set("X-Proxy-Target", finalUrl);
   const disposition = upstream.headers.get("content-disposition");
   if (disposition) headers.set("Content-Disposition", disposition);
@@ -531,4 +594,17 @@ export const POST = handle;
 export const PUT = handle;
 export const PATCH = handle;
 export const DELETE = handle;
+
+/** Handle CORS preflight for the proxy — public access, no auth needed. */
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS",
+      "Access-Control-Allow-Headers": "*",
+      "Access-Control-Max-Age": "86400",
+    },
+  });
+}
 // touch
