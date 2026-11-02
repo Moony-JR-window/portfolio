@@ -27,8 +27,8 @@ import { NextRequest } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-const UPSTREAM_BASE = "https://integrate.api.nvidia.com/v1";
-const UPSTREAM_ORIGIN = "https://integrate.api.nvidia.com";
+const UPSTREAM_BASE = "https://api.unorouter.com/v1";
+const UPSTREAM_ORIGIN = "https://api.unorouter.com";
 
 /** Hop-by-hop headers that must not be copied between requests. */
 const HOP_BY_HOP = new Set([
