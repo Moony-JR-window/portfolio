@@ -1,43 +1,42 @@
 /**
- * app/api/agent/route.ts
+ * app/api/agent/[...path]/route.ts
  *
- * Pure pass-through tunnel. No key handling, no whitelist, no body parsing.
+ * Path-pass-through tunnel:
+ *   POST https://moony-dev.vercel.app/api/agent/v1/chat/completions
+ *     -> https://integrate.api.nvidia.com/v1/chat/completions
  *
- *   POST https://myappnextjs.com/api/agent
- *     ->  https://integrate.api.nvidia.com/v1/chat/completions
- *
- * Everything the client sends (headers + body) is forwarded as-is, and the
- * upstream response (JSON or SSE stream) is piped straight back.
- * The caller supplies its own Authorization: Bearer nvapi-... header.
+ * No key handling, no body parsing. Caller's Authorization header rides along.
  */
 
 import { NextRequest } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-const UPSTREAM = "https://integrate.api.nvidia.com/v1"
+const UPSTREAM_BASE = "https://integrate.api.nvidia.com/v1";
 
-/** Hop-by-hop headers that must not be copied between requests. */
 const HOP_BY_HOP = new Set([
-  "host",
-  "connection",
-  "keep-alive",
-  "proxy-authenticate",
-  "proxy-authorization",
-  "te",
-  "trailer",
-  "transfer-encoding",
-  "upgrade",
-  "content-length",
-  "accept-encoding",
+  "host", "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
+  "te", "trailer", "transfer-encoding", "upgrade", "content-length", "accept-encoding",
 ]);
 
-function forwardHeaders(req: Request): Headers {
+function forwardHeaders(src: Headers): Headers {
   const out = new Headers();
-  req.headers.forEach((value, key) => {
+  src.forEach((value, key) => {
     if (!HOP_BY_HOP.has(key.toLowerCase())) out.set(key, value);
   });
   return out;
+}
+
+function buildUpstreamUrl(req: NextRequest, params: { path?: string[] }): string {
+  const sub = (params.path ?? []).filter(Boolean).join("/");
+  // Strip a leading "v1" if the caller included it, so we never get /v1/v1/...
+  const normalized = sub.replace(/^v1\/?/, "");
+  const url = new URL(`${UPSTREAM_BASE}/${normalized}${req.nextUrl.search}`);
+  // Hard guard: never leave the NVIDIA host.
+  if (url.origin !== "https://integrate.api.nvidia.com") {
+    throw new Error("Refusing to proxy off-host target.");
+  }
+  return url.toString();
 }
 
 export async function OPTIONS() {
@@ -52,39 +51,61 @@ export async function OPTIONS() {
   });
 }
 
-export async function GET() {
-  return Response.json({ ok: true, tunnel: UPSTREAM });
+export async function GET(
+  req: NextRequest,
+  ctx: { params: Promise<{ path?: string[] }> }
+) {
+  const { path } = await ctx.params;
+  // /api/agent/health -> plain health check
+  if (path?.[0] === "health") {
+    return Response.json({ ok: true, upstream: UPSTREAM_BASE });
+  }
+  return proxy(req, path, "GET");
 }
 
-export async function POST(req: NextRequest) {
-  let upstream: Response;
+export async function POST(
+  req: NextRequest,
+  ctx: { params: Promise<{ path?: string[] }> }
+) {
+  const { path } = await ctx.params;
+  return proxy(req, path, "POST");
+}
 
+async function proxy(req: NextRequest, path: string[] | undefined, method: string) {
+  let target: string;
   try {
-    upstream = await fetch(UPSTREAM, {
-      method: "POST",
-      headers: forwardHeaders(req),
-      body: req.body, // raw stream, never parsed
-      duplex: "half", // required for streaming request bodies
+    target = buildUpstreamUrl(req, { path });
+  } catch (err) {
+    return Response.json({ error: String((err as Error)?.message ?? err) }, { status: 400 });
+  }
+
+  let upstream: Response;
+  try {
+    upstream = await fetch(target, {
+      method,
+      headers: forwardHeaders(req.headers),
+      // For GET there is no body; passing undefined keeps the fetch valid.
+      ...(method === "GET"
+        ? {}
+        : { body: req.body, duplex: "half" as const }),
       cache: "no-store",
     } as RequestInit);
   } catch (err) {
     return Response.json(
-      { error: "Could not reach upstream.", detail: String((err as Error)?.message ?? err) },
+      { error: "Could not reach upstream.", detail: String((err as Error)?.message ?? err), target },
       { status: 502 }
     );
   }
 
-  // Pipe the upstream response straight through, untouched.
+  const headers = new Headers();
+  upstream.headers.forEach((value, key) => {
+    if (!HOP_BY_HOP.has(key.toLowerCase())) headers.set(key, value);
+  });
+  headers.set("Access-Control-Allow-Origin", "*");
+
   return new Response(upstream.body, {
     status: upstream.status,
     statusText: upstream.statusText,
-    headers: (() => {
-      const h = new Headers();
-      upstream.headers.forEach((value, key) => {
-        if (!HOP_BY_HOP.has(key.toLowerCase())) h.set(key, value);
-      });
-      h.set("Access-Control-Allow-Origin", "*");
-      return h;
-    })(),
+    headers,
   });
 }
