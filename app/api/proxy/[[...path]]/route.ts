@@ -72,16 +72,16 @@ function upstreamHeaders(req: NextRequest, targetUrl: URL): Record<string, strin
   const visitorUA = req.headers.get("user-agent");
   h["User-Agent"] =
     visitorUA ||
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
-  // Accept headers
+  // Accept headers — match Chrome's exact Accept string
   h["Accept"] =
     req.headers.get("accept") ||
-    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8";
+    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7";
   h["Accept-Language"] =
     req.headers.get("accept-language") || "en-US,en;q=0.9";
   h["Accept-Encoding"] =
-    req.headers.get("accept-encoding") || "gzip, deflate, br";
+    req.headers.get("accept-encoding") || "gzip, deflate, br, zstd";
   h["Accept-Charset"] =
     req.headers.get("accept-charset") || "UTF-8";
 
@@ -110,6 +110,19 @@ function upstreamHeaders(req: NextRequest, targetUrl: URL): Record<string, strin
   if (secFetchSite) h["Sec-Fetch-Site"] = secFetchSite;
   const secFetchUser = req.headers.get("sec-fetch-user");
   if (secFetchUser) h["Sec-Fetch-User"] = secFetchUser;
+
+  // Default Sec-Fetch-* for navigation requests (Google checks these)
+  if (!secFetchDest) h["Sec-Fetch-Dest"] = "document";
+  if (!secFetchMode) h["Sec-Fetch-Mode"] = "navigate";
+  if (!secFetchSite) h["Sec-Fetch-Site"] = "none";
+  if (!secFetchUser) h["Sec-Fetch-User"] = "?1";
+
+  // Upgrade-Insecure-Requests — real browsers send this
+  h["Upgrade-Insecure-Requests"] = "1";
+
+  // DNT (Do Not Track) — some sites check for its presence
+  const dnt = req.headers.get("dnt");
+  if (dnt) h["DNT"] = dnt;
   const secCsrf = req.headers.get("sec-custom-token") || req.headers.get("x-csrf-token");
   if (secCsrf) h["X-CSRF-Token"] = secCsrf;
 
