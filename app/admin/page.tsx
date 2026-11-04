@@ -88,7 +88,7 @@ export default function Dashboard() {
                     <div style={{ fontWeight: 600, color: t.accent, fontFamily: "JetBrains Mono, monospace" }}>{i.slug}</div>
                     <div style={{ fontSize: 13, color: t.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i.originalUrl}</div>
                   </div>
-                  <button onClick={() => copy(i.originalUrl, i.slug)} style={{ padding: "6px 12px", borderRadius: 8, border: `1px solid ${t.border}`, background: t.surface, color: t.text, fontSize: 13, cursor: "pointer" }}>{copied === i.slug ? "Copied" : "Copy"}</button>
+                  <button onClick={() => copy(window.location.origin + "/p/" + i.slug, i.slug)} style={{ padding: "6px 12px", borderRadius: 8, border: `1px solid ${t.border}`, background: t.surface, color: t.text, fontSize: 13, cursor: "pointer" }}>{copied === i.slug ? "Copied" : "Copy"}</button>
                   <button onClick={() => del(i.id)} style={{ padding: "6px 12px", borderRadius: 8, border: `1px solid ${t.border}`, background: t.surface, color: t.danger, fontSize: 13, cursor: "pointer" }}>Delete</button>
                 </div>
               ))}
