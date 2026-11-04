@@ -9,7 +9,7 @@ export type UrlEntry = {
   createdAt: string;
 };
 
-const FILE = path.join(process.cwd(), "_url.json");
+const FILE = process.env.VERCEL ? "/tmp/_url.json" : path.join(process.cwd(), "_url.json");
 
 function read(): UrlEntry[] {
   try {
